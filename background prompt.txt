@@ -1,0 +1,74 @@
+Let me explain what we're building here. this is C++ code for my adafruit esp32 microcontroller.
+ we will be controlling 4 linear actuator motors to lift my truck camper roof via two cytron MDDS30 
+ motor controllers. the linear actuators have hall effect sensors too and the goal is to synchronize 
+ the lift and movement of the motors as you would expect. the motors are 900lb Progressive Automation motors.  
+ 12 inch travel. 
+ 
+ This micro controller will be put into a custom project box for the truck camper and it will have 4 buttons on the face.
+ Before i describe the buttons I will describe the overall architecture of the program.
+
+The core of the program is a set of states. 
+
+First is the WAIT state. in this state the motors are not moving. 
+
+The LIFTING state. in this state the roof is being lifted and the main point is to keep the 4 lifting motors synchronized.
+
+The LOWERING state. in this state the roof is being lowered. again we must keep the 4 motors sychronized so the roof 
+does not rack.
+
+from the WAIT state hitting the UP_BUTTON transitions into the LIFTING state. 
+from the WAIT state hitting the DOWN_BUTTON transitions into the LOWERING state. 
+
+Releasing the UP_BUTTON transitions back to the WAIT state. 
+Releasing the DOWN_BUTTON transitions back to the WAIT state. 
+
+Now let me define some global variables that MUST BE PERSISTED to the I2C FRAM module to survive power downs:
+- CURRENT_POSITION 1 through 4. There will be 4 variables, one for each of the motors
+- UPPER_LIMIT. this is the upper travel limit. the LIFTING state will keep each individual
+motor lifting  until individually each one's reaches the UPPER_LIMIT.
+
+Note there is no LOWER_LIMIT stored variable, because during the limit setting procedure we will implicitly set the
+lower travel limit to 0. 
+
+The LOWERING state will keep each individual motor lowering until each inidividual one's CURRENT_POSITION 
+reaches 0. 
+
+There is a FAULT state. When the maximum and minimum CURRENT_POSITION of any two of the 4 motors is greater than a 
+tunable amount MAX_DEVIATION, then enter the FAULT state. This means the only LIFTING and LOWERING states can transition
+into the FAULT state. in the FAULT state no motion is allowed. The only thing you can do is to simultaneously press the 
+SET_BUTTON and CLEAR_BUTTON for 5 seconds, which will clear the fault and transition back to the WAIT state.
+
+There is the SET state, which can only be entered from the WAIT state. hitting the SET_BUTTON enters the SET state.
+releasing the SET button while in the SET state transitions back to the WAIT state. While in the SET state 
+hitting the DOWN_BUTTON sets the CURRENT_POSITION of all the motors to 0. While in the SET state hitting the UP_BUTTON
+sets the UPPER_LIMIT  to the highest CURRENT_POSITION of the 4 motors , and the other 3 motors' CURRENT_POSITION is also
+set to this value. 
+
+In the LIFTING and LOWERING states the motion algorithm is as follows:
+- we calculate the mid point position between the highest and lowest CURRENT_POSITION of the 4 motors. 
+- we have a tunable throttle speed we send to the cytrons , say 50% throttle. Each motors' actual throttle is adjusted
+proportionally vs how far they are from that mid point.  This is based on the MAX_DEVIATION variable. if a motor falls 
+behind this floating mid point target by more than (MAX_DEVIATION / 2) the throttle is 80%. If it is ahead of that 
+by more than (MAX_DEVIATION / 2) the throttle is 20%. Otherwise the throttle is proportionally adjusted between that 80%-20%
+window.
+
+
+The entire program runs on a super loop aiming for 50hz.
+At the start of each loop we detect the states of the 4 buttons. If the state of the 4 buttons has not changed in 3 
+iterations then we can be sure button presses have been de-bounced, so we determine the program state (WAIT, LIFTING 
+LOWERING, SET , etc...) as explained above.  If in the interation we determine the state of the 4 buttons has not
+yet settled and remained unchanged for 3 iterations then we do nothing in this iteration and simply wait out the time
+and do nothing and proceed to the next iteration. 
+
+Every iteration also write the global variables to FRAM so they are not lost. 
+
+Every 20 iterations write the global variables and the current state to the I2C screen. there are two cores on this ESP32
+so figure out a way to do this I2C stuff in a way that doesn't threaten the core motor control loop timing.
+
+you MUST validate my states and transitions. you MUST consider that button presses in reality don't ever come simultaneously
+so you have to evaluate all the different ways there might be unintended state transitions as I press button combos or 
+release them in rapid sequences (physically i can't actually press and release multiple buttons at the same time, so 
+you must validate that i don't have any unintended program state transitions in my design)
+
+You MUST also research the motor controllers I use (UART i believe) and my motors (they have 2 pulsed signals each actually).
+you MUST also take full advantage of the hardware pulse counters on the ESP32. 
