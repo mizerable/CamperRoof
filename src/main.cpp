@@ -4,6 +4,9 @@
 #include "motor_control.h"
 #include "storage.h"
 #include "display.h"
+#include "core_logic.h"
+
+#ifndef PIO_UNIT_TESTING
 
 // --- PINS ---
 #define PIN_BTN_UP 13
@@ -27,14 +30,9 @@ SharedState systemState;
 SemaphoreHandle_t stateMutex;
 int32_t currentPositions[4] = {0, 0, 0, 0};
 int32_t upperLimit = 0;
+CoreLogic coreLogic;
 
-// Button state tracking
-struct ButtonState {
-    bool up = false;
-    bool down = false;
-    bool set = false;
-    bool clr = false;
-};
+// Button state tracking is defined in system_types.h
 
 // --- TASKS ---
 void MotorTask(void *pvParameters);
@@ -62,8 +60,9 @@ void setup() {
     read_state_from_fram(currentPositions, &upperLimit);
 
     // Initialize Shared State
-    systemState.state = SystemState::STATE_WAIT;
-    systemState.upperLimit = upperLimit;
+    coreLogic.setInitialState(currentPositions, upperLimit);
+    systemState.state = coreLogic.getCurrentState();
+    systemState.upperLimit = coreLogic.getUpperLimit();
     for(int i=0; i<4; i++) {
         systemState.motors[i].currentPosition = currentPositions[i];
         systemState.motors[i].currentThrottle = 0;
@@ -128,157 +127,39 @@ ButtonState get_debounced_buttons() {
     return stable_state;
 }
 
-// Float midpoint logic
-void apply_proportional_throttle(bool isLifting, bool overrideLimits) {
-    int32_t min_pos = currentPositions[0];
-    int32_t max_pos = currentPositions[0];
-
-    for (int i = 1; i < 4; i++) {
-        if (currentPositions[i] < min_pos) min_pos = currentPositions[i];
-        if (currentPositions[i] > max_pos) max_pos = currentPositions[i];
-    }
-
-    int32_t midpoint = (min_pos + max_pos) / 2;
-
-    for (int i = 0; i < 4; i++) {
-        int throttle = BASE_THROTTLE;
-        int32_t deviation = currentPositions[i] - midpoint;
-
-        // If lifting, a motor that is higher than midpoint needs less throttle.
-        // If lowering, a motor that is higher than midpoint needs more throttle.
-        if (isLifting) {
-            // Mapping deviation [-MAX/2, MAX/2] to [MAX_THROTTLE, MIN_THROTTLE]
-            // deviation > 0 means it's ahead, so reduce throttle.
-            throttle = map(deviation, -(MAX_DEVIATION/2), (MAX_DEVIATION/2), MAX_THROTTLE, MIN_THROTTLE);
-        } else {
-            // If lowering, deviation > 0 means it's higher (falling behind the lowering process), so increase throttle.
-            throttle = map(deviation, -(MAX_DEVIATION/2), (MAX_DEVIATION/2), MIN_THROTTLE, MAX_THROTTLE);
-        }
-
-        // Clamp
-        if (throttle > MAX_THROTTLE) throttle = MAX_THROTTLE;
-        if (throttle < MIN_THROTTLE) throttle = MIN_THROTTLE;
-
-        // Direction mapping
-        if (!isLifting) {
-            throttle = -throttle;
-        }
-
-        // Check Individual limits
-        if (!overrideLimits) {
-            if (isLifting && currentPositions[i] >= upperLimit) {
-                throttle = 0;
-            }
-            if (!isLifting && currentPositions[i] <= 0) {
-                throttle = 0;
-            }
-        }
-
-        set_motor_throttle(i, throttle);
-        
-        // Update shared state
-        if (xSemaphoreTake(stateMutex, 0) == pdTRUE) {
-            systemState.motors[i].currentThrottle = throttle;
-            xSemaphoreGive(stateMutex);
-        }
-    }
-}
-
 // --- CORE 1: MOTOR TASK ---
 void MotorTask(void *pvParameters) {
     TickType_t xLastWakeTime;
     const TickType_t xFrequency = pdMS_TO_TICKS(LOOP_PERIOD_MS);
     xLastWakeTime = xTaskGetTickCount();
 
-    SystemState currentState = SystemState::STATE_WAIT;
-    int fault_clear_timer = 0;
-
     for (;;) {
         // 1. Read Inputs & PCNT
         ButtonState btn = get_debounced_buttons();
         update_pcnt_counts(currentPositions);
 
-        // 2. Check Fault Condition (Max Deviation)
-        int32_t min_pos = currentPositions[0];
-        int32_t max_pos = currentPositions[0];
-        for (int i = 1; i < 4; i++) {
-            if (currentPositions[i] < min_pos) min_pos = currentPositions[i];
-            if (currentPositions[i] > max_pos) max_pos = currentPositions[i];
-        }
+        // 2. Evaluate Core Logic
+        int16_t throttles[4];
+        bool fram_write_needed = false;
         
-        if ((currentState == SystemState::STATE_LIFTING || currentState == SystemState::STATE_LOWERING) 
-            && (max_pos - min_pos > MAX_DEVIATION)) {
-            currentState = SystemState::STATE_FAULT;
-            stop_all_motors();
-        }
+        coreLogic.evaluate(btn, currentPositions, throttles, fram_write_needed);
 
-        // 3. State Machine
-        switch (currentState) {
-            case SystemState::STATE_WAIT:
-                stop_all_motors();
-                if (btn.up && !btn.down && !btn.set) {
-                    currentState = SystemState::STATE_LIFTING;
-                } else if (!btn.up && btn.down && !btn.set) {
-                    currentState = SystemState::STATE_LOWERING;
-                } else if (!btn.up && !btn.down && btn.set && !btn.clr) {
-                    currentState = SystemState::STATE_SET;
-                }
-                break;
-
-            case SystemState::STATE_LIFTING:
-                if (!btn.up) {
-                    currentState = SystemState::STATE_WAIT;
-                } else {
-                    apply_proportional_throttle(true, btn.clr);
-                }
-                break;
-
-            case SystemState::STATE_LOWERING:
-                if (!btn.down) {
-                    currentState = SystemState::STATE_WAIT;
-                } else {
-                    apply_proportional_throttle(false, btn.clr);
-                }
-                break;
-
-            case SystemState::STATE_FAULT:
-                stop_all_motors();
-                if (btn.set && btn.clr) {
-                    fault_clear_timer++;
-                    if (fault_clear_timer >= (5000 / LOOP_PERIOD_MS)) { // 5 seconds
-                        currentState = SystemState::STATE_WAIT;
-                        fault_clear_timer = 0;
-                    }
-                } else {
-                    fault_clear_timer = 0;
-                }
-                break;
-
-            case SystemState::STATE_SET:
-                stop_all_motors();
-                if (!btn.set) {
-                    currentState = SystemState::STATE_WAIT;
-                } else {
-                    if (btn.down) {
-                        for (int i = 0; i < 4; i++) currentPositions[i] = 0;
-                        write_state_to_fram(currentPositions, upperLimit);
-                    }
-                    if (btn.up) {
-                        upperLimit = max_pos;
-                        write_state_to_fram(currentPositions, upperLimit);
-                    }
-                }
-                break;
+        // 3. Apply Hardware Outputs
+        for (int i = 0; i < 4; i++) {
+            set_motor_throttle(i, throttles[i]);
         }
 
         // 4. Persistence & UI Sync
-        write_state_to_fram(currentPositions, upperLimit);
+        if (fram_write_needed) {
+            write_state_to_fram(currentPositions, coreLogic.getUpperLimit());
+        }
 
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-            systemState.state = currentState;
-            systemState.upperLimit = upperLimit;
+            systemState.state = coreLogic.getCurrentState();
+            systemState.upperLimit = coreLogic.getUpperLimit();
             for(int i=0; i<4; i++) {
                 systemState.motors[i].currentPosition = currentPositions[i];
+                systemState.motors[i].currentThrottle = throttles[i];
             }
             xSemaphoreGive(stateMutex);
         }
@@ -287,6 +168,7 @@ void MotorTask(void *pvParameters) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
+
 
 // --- CORE 0: DISPLAY TASK ---
 void DisplayTask(void *pvParameters) {
@@ -304,3 +186,5 @@ void DisplayTask(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(100)); // 10Hz screen refresh
     }
 }
+
+#endif // PIO_UNIT_TESTING

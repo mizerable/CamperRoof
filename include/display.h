@@ -2,26 +2,7 @@
 #define DISPLAY_H
 
 #include <Arduino.h>
-
-// Matches the enums in main
-enum class SystemState {
-    STATE_WAIT,
-    STATE_LIFTING,
-    STATE_LOWERING,
-    STATE_FAULT,
-    STATE_SET
-};
-
-struct MotorData {
-    int32_t currentPosition;
-    int16_t currentThrottle;
-};
-
-struct SharedState {
-    SystemState state;
-    MotorData motors[4];
-    int32_t upperLimit;
-};
+#include "system_types.h"
 
 // Setup I2C SSD1306 Display
 bool setup_display();
