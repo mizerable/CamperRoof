@@ -1,5 +1,5 @@
 #include "pcnt_setup.h"
-
+#include "core_logic.h"
 // Define pins for the 4 motors (Phase A and Phase B)
 const int PCNT_PINS[4][2] = {
     {34, 35}, // Motor 1
@@ -53,10 +53,6 @@ void update_pcnt_counts(int32_t currentPositions[4]) {
         int16_t current_val;
         pcnt_get_counter_value((pcnt_unit_t)i, &current_val);
         
-        // Standard C integer wrapping logic for 16-bit signed integer
-        int16_t delta = (int16_t)(current_val - last_pcnt_val[i]);
-        last_pcnt_val[i] = current_val;
-        
-        currentPositions[i] += delta;
+        CoreLogic::updateAccumulatedPosition(current_val, last_pcnt_val[i], currentPositions[i]);
     }
 }

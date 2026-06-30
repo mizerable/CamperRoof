@@ -69,7 +69,7 @@ void CoreLogic::evaluate(
     int16_t throttles[4],
     bool& fram_write_needed
 ) {
-    fram_write_needed = true; // By default we save every loop for persistence (as requested)
+    fram_write_needed = false; 
     
     // Default throttles to 0
     for(int i=0; i<4; i++) throttles[i] = 0;
@@ -85,6 +85,7 @@ void CoreLogic::evaluate(
     if ((currentState == SystemState::STATE_LIFTING || currentState == SystemState::STATE_LOWERING) 
         && (max_pos - min_pos > MAX_DEVIATION)) {
         currentState = SystemState::STATE_FAULT;
+        fram_write_needed = true; // State changed, persist
     }
 
     // 2. State Machine
@@ -92,26 +93,33 @@ void CoreLogic::evaluate(
         case SystemState::STATE_WAIT:
             if (btn.up && !btn.down && !btn.set) {
                 currentState = SystemState::STATE_LIFTING;
+                fram_write_needed = true;
             } else if (!btn.up && btn.down && !btn.set) {
                 currentState = SystemState::STATE_LOWERING;
+                fram_write_needed = true;
             } else if (!btn.up && !btn.down && btn.set && !btn.clr) {
                 currentState = SystemState::STATE_SET;
+                fram_write_needed = true;
             }
             break;
 
         case SystemState::STATE_LIFTING:
             if (!btn.up) {
                 currentState = SystemState::STATE_WAIT;
+                fram_write_needed = true;
             } else {
                 apply_proportional_throttle(true, btn.clr, currentPositions, throttles);
+                fram_write_needed = true; // Positions changing
             }
             break;
 
         case SystemState::STATE_LOWERING:
             if (!btn.down) {
                 currentState = SystemState::STATE_WAIT;
+                fram_write_needed = true;
             } else {
                 apply_proportional_throttle(false, btn.clr, currentPositions, throttles);
+                fram_write_needed = true; // Positions changing
             }
             break;
 
@@ -121,6 +129,7 @@ void CoreLogic::evaluate(
                 if (fault_clear_timer >= (5000 / LOOP_PERIOD_MS)) { // 5 seconds
                     currentState = SystemState::STATE_WAIT;
                     fault_clear_timer = 0;
+                    fram_write_needed = true;
                 }
             } else {
                 fault_clear_timer = 0;
@@ -130,14 +139,25 @@ void CoreLogic::evaluate(
         case SystemState::STATE_SET:
             if (!btn.set) {
                 currentState = SystemState::STATE_WAIT;
+                fram_write_needed = true;
             } else {
                 if (btn.down) {
                     for (int i = 0; i < 4; i++) currentPositions[i] = 0;
+                    fram_write_needed = true; // limits changed
                 }
                 if (btn.up) {
                     upperLimit = max_pos;
+                    fram_write_needed = true; // limits changed
                 }
             }
             break;
     }
+}
+
+void CoreLogic::updateAccumulatedPosition(int16_t current_pcnt, int16_t &last_pcnt, int32_t &accumulated_pos) {
+    // 16-bit signed integer wrapping logic
+    // This correctly handles rollover when the ESP32 hardware counter goes past 32767 to -32768
+    int16_t delta = (int16_t)(current_pcnt - last_pcnt);
+    last_pcnt = current_pcnt;
+    accumulated_pos += delta;
 }

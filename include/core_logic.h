@@ -35,6 +35,9 @@ public:
     // Setters for initialization from FRAM
     void setInitialState(int32_t positions[4], int32_t limit);
 
+    // Hardware PCNT Rollover abstraction (exposed for testing)
+    static void updateAccumulatedPosition(int16_t current_pcnt, int16_t &last_pcnt, int32_t &accumulated_pos);
+
 private:
     SystemState currentState;
     int32_t upperLimit;

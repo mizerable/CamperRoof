@@ -23,3 +23,16 @@ reasonable way.
 5. throughout all of the above you MUST make sure that what is stored into the FRAM makes sense and is reasonable. And make sure 
 that whatever is written in any of those cases would also make sense if the system was power cycled and had to read those values again. 
 in other words, make sure the positions stored in FRAM don't become de-synced with reality. 
+
+6. you MUST test the wraparound behavior in the PCNT units is working properly in both directions. 
+
+7. you MUST test a simulated case where the motors don't respond exactly the same because they each see different loads. you MUST 
+test that the algorithm we have deisgned to adjust throttle based on relative positions still works in a reasonable way.  this 
+can result in many test cases. I want to be absolutely sure the algorithm we have is stable and behaves as expected. 
+
+8. you MUST test edge cases and failure modes. 
+
+
+I expect dozens and dozens of tests. you MUST be extremely thorough with the sequences and combinations of user input and motor 
+behavior. You MUST also write unit tests that test the various modules and functions individually and in isolation, mocking 
+any external dependencies as needed. 
