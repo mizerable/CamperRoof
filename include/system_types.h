@@ -30,6 +30,7 @@ struct SharedState {
     SystemState state;
     MotorData motors[4];
     int32_t upperLimit;
+    ButtonState buttons;
 };
 
 #endif // SYSTEM_TYPES_H

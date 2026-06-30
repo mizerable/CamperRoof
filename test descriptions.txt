@@ -32,6 +32,14 @@ can result in many test cases. I want to be absolutely sure the algorithm we hav
 
 8. you MUST test edge cases and failure modes. 
 
+9. verify that if it's in FAULT state, that if I just clear the state back to WAIT without actually manually jogging the motors back 
+in sync that it'll immediately go back into FAULT state.
+
+
+10. Since these tests actually run on the ESP32, you MUST create an actual realistic entire routine from startup to power cycle to 
+resuming usage. this means you MUST work in to this routine lifting, lowering, setting both limits, lifting and lowering past those 
+limits and setting the limits again. power cycling (starting fresh) and resuming and reading the FRAM for real. As in actually 
+verifying that the FRAM module is functional.
 
 I expect dozens and dozens of tests. you MUST be extremely thorough with the sequences and combinations of user input and motor 
 behavior. You MUST also write unit tests that test the various modules and functions individually and in isolation, mocking 

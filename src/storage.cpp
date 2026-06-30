@@ -9,7 +9,11 @@ Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
 
 #define MAGIC_VALUE 0xCAFE
 
+// Initialize the I2C FRAM
 bool setup_storage() {
+    // Drop I2C clock to 50kHz for stability
+    Wire.setClock(50000);
+
     // Attempt to initialize I2C FRAM
     if (!fram.begin()) {
         return false; // FRAM not found

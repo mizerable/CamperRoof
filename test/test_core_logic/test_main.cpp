@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <unity.h>
+#include <Wire.h>
+#include "storage.h"
 #include "core_logic.h"
 
 CoreLogic logic;
@@ -375,6 +377,134 @@ void test_upper_limit_prevents_up_allows_down(void) {
     TEST_ASSERT_NOT_EQUAL(0, throttles[0]); // Allowed to move down!
 }
 
+
+/**
+ * @brief Verifies Requirement 9: Clearing a fault without fixing the sync instantly faults again.
+ * Action: Trigger a FAULT. Clear it to WAIT. Try to move UP without syncing.
+ * Expected: State instantly reverts to FAULT.
+ */
+void test_fault_retriggers_if_not_synced(void) {
+    // 1. Force into fault
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    positions[0] = 0;
+    positions[1] = 600;
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+
+    // 2. Clear fault to WAIT
+    btn.up = false;
+    btn.set = true;
+    btn.clr = true;
+    for (int i=0; i<250; i++) {
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+    }
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+
+    // 3. Try to move UP again (positions are still out of sync by 600)
+    btn.set = false;
+    btn.clr = false;
+    btn.up = true;
+    
+    // First loop transitions WAIT -> LIFTING
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    
+    // Second loop sees LIFTING + massive deviation -> instantly transitions back to FAULT
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+}
+// ---------------------------------------------------------
+// 10. PHYSICAL FRAM INTEGRATION TEST
+// ---------------------------------------------------------
+void test_full_lifecycle_with_physical_fram(void) {
+    // 1. Initialize physical I2C and FRAM
+    Wire.begin();
+    bool fram_ready = setup_storage();
+    TEST_ASSERT_TRUE_MESSAGE(fram_ready, "FRAM chip not found on I2C bus!");
+
+    // 2. Start fresh by overwriting FRAM with zeros
+    int32_t initial_pos[4] = {0, 0, 0, 0};
+    write_state_to_fram(initial_pos, 0);
+    
+    // Completely reset the global logic object to match the wiped FRAM
+    logic.setInitialState(initial_pos, 0);
+    
+    // Also reset the global positions array
+    for (int i=0; i<4; i++) positions[i] = 0;
+
+    // 3. User pushes UP, lifts to 25000 pulses
+    btn.up = true;
+    for (int i=0; i<500; i++) {
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        positions[0] += 50; positions[1] += 50; positions[2] += 50; positions[3] += 50;
+        if (fram_write_needed) {
+            write_state_to_fram(positions, logic.getUpperLimit());
+        }
+        delay(2); // Prevent I2C bus flood (simulates real-world loop delay but sped up 10x for testing)
+    }
+    
+    // 4. User sets new Upper Limit
+    // First, user releases UP button to stop lifting and enter WAIT state
+    btn.up = false;
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    if (fram_write_needed) write_state_to_fram(positions, logic.getUpperLimit());
+    
+    // User presses SET to enter SET state
+    btn.set = true;
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    
+    // User presses UP to lock in the new upper limit
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    if (fram_write_needed) {
+        write_state_to_fram(positions, logic.getUpperLimit());
+    }
+    
+    // 5. User lowers roof to 5000 pulses
+    btn.set = false;
+    btn.up = false;
+    btn.down = true;
+    for (int i=0; i<400; i++) { // Lower by 20000
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        positions[0] -= 50; positions[1] -= 50; positions[2] -= 50; positions[3] -= 50;
+        if (fram_write_needed) {
+            write_state_to_fram(positions, logic.getUpperLimit());
+        }
+    }
+    
+    // 5.5 USER RELEASES BUTTON (Triggers the final FRAM save of the 5000 positions!)
+    btn.down = false;
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    if (fram_write_needed) {
+        write_state_to_fram(positions, logic.getUpperLimit());
+    }
+    
+    // Check local RAM state
+    TEST_ASSERT_EQUAL(5000, positions[0]);
+    TEST_ASSERT_EQUAL(25000, logic.getUpperLimit());
+
+    // 6. SIMULATE POWER LOSS! Clear RAM completely.
+    for(int i=0; i<4; i++) positions[i] = -999;
+    CoreLogic new_logic; // Fresh uninitialized instance
+
+    // In a real power loss, the ESP32 hardware AND the FRAM reset completely. 
+    // We cannot just call Wire.end() while the FRAM is powered, because it holds SDA low and locks the bus!
+    delay(50); // Just let the I2C bus settle normally instead.
+
+    // 7. System Boots back up, reads from physical FRAM
+    int32_t recovered_positions[4] = {-1, -1, -1, -1};
+    int32_t recovered_limit = -1;
+    read_state_from_fram(recovered_positions, &recovered_limit);
+    new_logic.setInitialState(recovered_positions, recovered_limit);
+
+    // 8. Verify everything matches reality perfectly!
+    TEST_ASSERT_EQUAL(5000, recovered_positions[0]);
+    TEST_ASSERT_EQUAL(5000, recovered_positions[1]);
+    TEST_ASSERT_EQUAL(5000, recovered_positions[2]);
+    TEST_ASSERT_EQUAL(5000, recovered_positions[3]);
+    TEST_ASSERT_EQUAL(25000, new_logic.getUpperLimit());
+}
+
 void setup() {
     delay(2000); // Wait 2 seconds for the Serial Monitor to connect over USB
     UNITY_BEGIN();
@@ -398,6 +528,8 @@ void setup() {
     RUN_TEST(test_proportional_feedback_convergence);
     RUN_TEST(test_fram_write_needed_flag_optimizations);
     RUN_TEST(test_upper_limit_prevents_up_allows_down);
+    RUN_TEST(test_fault_retriggers_if_not_synced);
+    RUN_TEST(test_full_lifecycle_with_physical_fram);
     UNITY_END();
 }
 

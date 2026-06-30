@@ -14,8 +14,7 @@
 #define PIN_BTN_SET 27
 #define PIN_BTN_CLEAR 33
 
-#define PIN_I2C_SDA 21
-#define PIN_I2C_SCL 22
+// I2C pins will use the default Feather Huzzah32 pins (SDA=23, SCL=22)
 
 // --- CONSTANTS ---
 #define MAX_DEVIATION 500 // Maximum allowed pulse difference between any two motors
@@ -42,7 +41,7 @@ void setup() {
     Serial.begin(115200);
 
     // Initialize I2C Bus for both Display and FRAM
-    Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+    Wire.begin();
     
     // Initialize buttons with pullups
     pinMode(PIN_BTN_UP, INPUT_PULLUP);
@@ -157,6 +156,7 @@ void MotorTask(void *pvParameters) {
         if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
             systemState.state = coreLogic.getCurrentState();
             systemState.upperLimit = coreLogic.getUpperLimit();
+            systemState.buttons = btn;
             for(int i=0; i<4; i++) {
                 systemState.motors[i].currentPosition = currentPositions[i];
                 systemState.motors[i].currentThrottle = throttles[i];

@@ -43,7 +43,16 @@ void update_display(const SharedState* state) {
     display.setCursor(0, 0);
 
     display.print(F("State: "));
-    display.println(state_to_string(state->state));
+    display.print(state_to_string(state->state));
+    
+    // Draw Button States top right
+    display.setCursor(100, 0);
+    display.print(state->buttons.up ? 'U' : '_');
+    display.print(state->buttons.down ? 'D' : '_');
+    display.print(state->buttons.set ? 'S' : '_');
+    display.print(state->buttons.clr ? 'C' : '_');
+    display.println();
+
     display.print(F("Top Limit: "));
     display.println(state->upperLimit);
     

@@ -109,7 +109,6 @@ void CoreLogic::evaluate(
                 fram_write_needed = true;
             } else {
                 apply_proportional_throttle(true, btn.clr, currentPositions, throttles);
-                fram_write_needed = true; // Positions changing
             }
             break;
 
@@ -119,7 +118,6 @@ void CoreLogic::evaluate(
                 fram_write_needed = true;
             } else {
                 apply_proportional_throttle(false, btn.clr, currentPositions, throttles);
-                fram_write_needed = true; // Positions changing
             }
             break;
 
