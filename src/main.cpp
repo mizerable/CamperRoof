@@ -129,7 +129,7 @@ ButtonState get_debounced_buttons() {
 }
 
 // Float midpoint logic
-void apply_proportional_throttle(bool isLifting) {
+void apply_proportional_throttle(bool isLifting, bool overrideLimits) {
     int32_t min_pos = currentPositions[0];
     int32_t max_pos = currentPositions[0];
 
@@ -165,11 +165,13 @@ void apply_proportional_throttle(bool isLifting) {
         }
 
         // Check Individual limits
-        if (isLifting && currentPositions[i] >= upperLimit) {
-            throttle = 0;
-        }
-        if (!isLifting && currentPositions[i] <= 0) {
-            throttle = 0;
+        if (!overrideLimits) {
+            if (isLifting && currentPositions[i] >= upperLimit) {
+                throttle = 0;
+            }
+            if (!isLifting && currentPositions[i] <= 0) {
+                throttle = 0;
+            }
         }
 
         set_motor_throttle(i, throttle);
@@ -214,9 +216,9 @@ void MotorTask(void *pvParameters) {
         switch (currentState) {
             case SystemState::STATE_WAIT:
                 stop_all_motors();
-                if (btn.up && !btn.down && !btn.set && !btn.clr) {
+                if (btn.up && !btn.down && !btn.set) {
                     currentState = SystemState::STATE_LIFTING;
-                } else if (!btn.up && btn.down && !btn.set && !btn.clr) {
+                } else if (!btn.up && btn.down && !btn.set) {
                     currentState = SystemState::STATE_LOWERING;
                 } else if (!btn.up && !btn.down && btn.set && !btn.clr) {
                     currentState = SystemState::STATE_SET;
@@ -227,7 +229,7 @@ void MotorTask(void *pvParameters) {
                 if (!btn.up) {
                     currentState = SystemState::STATE_WAIT;
                 } else {
-                    apply_proportional_throttle(true);
+                    apply_proportional_throttle(true, btn.clr);
                 }
                 break;
 
@@ -235,7 +237,7 @@ void MotorTask(void *pvParameters) {
                 if (!btn.down) {
                     currentState = SystemState::STATE_WAIT;
                 } else {
-                    apply_proportional_throttle(false);
+                    apply_proportional_throttle(false, btn.clr);
                 }
                 break;
 

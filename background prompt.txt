@@ -72,3 +72,19 @@ you must validate that i don't have any unintended program state transitions in 
 
 You MUST also research the motor controllers I use (UART i believe) and my motors (they have 2 pulsed signals each actually).
 you MUST also take full advantage of the hardware pulse counters on the ESP32. 
+
+in the LIFTING state, if the CLEAR_BUTTON is also held down then ignore the upper travel limit. 
+in the LOWERING state, if the CLEAR_BUTTON is also held down then ignore the lower travel limit. 
+The reason for these two overrides is because the operator will be watching carefully and will want to fine tune the limits, which 
+may be outside the bounds of the current limits. 
+
+---
+### ADDENDUM: Architectural Decisions & Clarifications (Added post-review)
+
+1. **Upper Limit Calibration**: When hitting UP in the SET state, we ONLY update the `UPPER_LIMIT` to the max position. We do NOT overwrite the `CURRENT_POSITION` variables.
+2. **Lower Limit Calibration & Manual Jogging**: Because the Cytrons allow manual jogging via onboard buttons, the roof can be manually leveled at the bottom. When hitting DOWN in the SET state, setting all `CURRENT_POSITION` variables to 0 perfectly syncs the logical state to the newly established physical baseline. (The PCNT hardware continues to perfectly track pulses even during manual jogging).
+3. **Button Priority**: State transitions strictly follow the defined button combinations. Any unspecified combination (e.g., pressing UP and DOWN simultaneously) is implicitly ignored and does not cause a state transition.
+4. **PCNT Rollover Handling**: The ESP32 PCNT registers are 16-bit signed integers. We elegantly handle hardware rollovers (without missing pulses or using interrupts) by subtracting the previous 16-bit read from the current 16-bit read and casting to `int16_t`. This standard C math inherently resolves the exact delta distance.
+5. **Motor Control Protocol**: The Cytron MDDS30s will be configured for "Simplified Serial Mode" at 9600 baud. The software uses an abstract -100 to 100 throttle internally, and translates it to the 0-255 raw unsigned bytes expected by the Left and Right Cytron channels.
+6. **Data Structures**: The `targetPosition` and `isFaulted` variables were discarded. The floating midpoint algorithm is purely reactive, and `STATE_FAULT` inherently covers the fault flag.
+7. **Boot Sequence**: The system boots directly into the `WAIT` state, and immediately reads the stored positions and limits from the I2C FRAM into RAM. 

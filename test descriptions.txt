@@ -1,0 +1,25 @@
+You must write unit tests for the following concerns, with appropriate mocking and assumptions as needed:
+
+
+1. you MUST test the state transitions. You must come up with a huge number of  possible button press sequences, and you must 
+verify and ensure that the system behaves as expected under all circumstances and never gets into an indeterminate state. you MUST 
+add comments to explain the expected behavior in each test case. You MUST very strenuously test various button press combinations 
+and you MUST make sure the system behaves reasonably in all cases. you MUST specifically also take into account what a human user would 
+perceive to be simultaneously pressing buttons or releasing buttons but in reality to the machine they would appear in sequence 
+and since the machine wouldn't know the user's intent it must still behave in a reasonable and proper way. 
+
+
+2. you MUST test the upper and lower limit functionality. You must write a test that verifies that when the upper 
+limit is reached the motor stops. You must write a test that verifies that when the lower limit is reached the motor stops. You 
+must write a test that verifies that if the upper limit is reached and the user tries to lift further that the motor does not move 
+if the upper limit is reached and the user tries to lower that the motor does move. etc. etc.
+
+3. you MUST test the SET state and setting functionality thoroughly. you MUST consider all cases that could occur and combinations 
+and sequences of users setting both limits and/or moving the roof in between setting them and making sure everything works in a 
+reasonable way. 
+
+4. you MUST test the FAULT state behavior thoroughly. 
+
+5. throughout all of the above you MUST make sure that what is stored into the FRAM makes sense and is reasonable. And make sure 
+that whatever is written in any of those cases would also make sense if the system was power cycled and had to read those values again. 
+in other words, make sure the positions stored in FRAM don't become de-synced with reality. 
