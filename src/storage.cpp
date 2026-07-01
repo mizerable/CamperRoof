@@ -9,10 +9,55 @@ Adafruit_FRAM_I2C fram = Adafruit_FRAM_I2C();
 
 #define MAGIC_VALUE 0xCAFE
 
+void recoverI2CBus() {
+    pinMode(23, INPUT_PULLUP); // SDA
+    pinMode(22, OUTPUT);       // SCL
+    digitalWrite(22, HIGH);
+    
+    // If SDA is low, the bus is stuck. Clock SCL up to 9 times to free it.
+    for (int i = 0; i < 9; i++) {
+        if (digitalRead(23) == HIGH) {
+            break; // Bus is free!
+        }
+        digitalWrite(22, LOW);
+        delayMicroseconds(5);
+        digitalWrite(22, HIGH);
+        delayMicroseconds(5);
+    }
+    
+    // Generate a STOP condition
+    digitalWrite(23, LOW);
+    pinMode(23, OUTPUT);
+    delayMicroseconds(5);
+    digitalWrite(22, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(23, HIGH);
+    delayMicroseconds(5);
+}
+
 // Initialize the I2C FRAM
 bool setup_storage() {
+    recoverI2CBus();
+
+    Wire.begin();
+    Wire.setTimeOut(100); // Prevent infinite hang if SCL/SDA are physically shorted to GND
+    
     // Drop I2C clock to 50kHz for stability
     Wire.setClock(50000);
+
+    Serial.println("\n--- I2C BUS SCAN ---");
+    int devices = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.printf("Found I2C device at 0x%02X\n", addr);
+            devices++;
+        }
+    }
+    if (devices == 0) {
+        Serial.println("No I2C devices found! The bus is completely dead!");
+    }
+    Serial.println("--------------------");
 
     // Attempt to initialize I2C FRAM
     if (!fram.begin()) {

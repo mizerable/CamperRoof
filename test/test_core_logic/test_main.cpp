@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include "storage.h"
 #include "core_logic.h"
+#include "display.h"
 
 CoreLogic logic;
 ButtonState btn;
@@ -416,11 +417,25 @@ void test_fault_retriggers_if_not_synced(void) {
 // ---------------------------------------------------------
 // 10. PHYSICAL FRAM INTEGRATION TEST
 // ---------------------------------------------------------
+void update_test_display() {
+    SharedState ui_state;
+    ui_state.state = logic.getCurrentState();
+    ui_state.upperLimit = logic.getUpperLimit();
+    ui_state.buttons = btn;
+    for (int i=0; i<4; i++) {
+        ui_state.motors[i].currentPosition = positions[i];
+        ui_state.motors[i].currentThrottle = throttles[i];
+    }
+    update_display(&ui_state);
+}
+
 void test_full_lifecycle_with_physical_fram(void) {
     // 1. Initialize physical I2C and FRAM
-    Wire.begin();
     bool fram_ready = setup_storage();
     TEST_ASSERT_TRUE_MESSAGE(fram_ready, "FRAM chip not found on I2C bus!");
+    
+    // Initialize OLED Display
+    setup_display();
 
     // 2. Start fresh by overwriting FRAM with zeros
     int32_t initial_pos[4] = {0, 0, 0, 0};
@@ -440,6 +455,12 @@ void test_full_lifecycle_with_physical_fram(void) {
         if (fram_write_needed) {
             write_state_to_fram(positions, logic.getUpperLimit());
         }
+        
+        // Update the physical screen occasionally to not flood the I2C bus too much
+        if (i % 10 == 0) {
+            update_test_display();
+        }
+        
         delay(2); // Prevent I2C bus flood (simulates real-world loop delay but sped up 10x for testing)
     }
     
@@ -448,10 +469,12 @@ void test_full_lifecycle_with_physical_fram(void) {
     btn.up = false;
     logic.evaluate(btn, positions, throttles, fram_write_needed);
     if (fram_write_needed) write_state_to_fram(positions, logic.getUpperLimit());
+    update_test_display();
     
     // User presses SET to enter SET state
     btn.set = true;
     logic.evaluate(btn, positions, throttles, fram_write_needed);
+    update_test_display();
     
     // User presses UP to lock in the new upper limit
     btn.up = true;
@@ -459,6 +482,7 @@ void test_full_lifecycle_with_physical_fram(void) {
     if (fram_write_needed) {
         write_state_to_fram(positions, logic.getUpperLimit());
     }
+    update_test_display();
     
     // 5. User lowers roof to 5000 pulses
     btn.set = false;
@@ -469,6 +493,10 @@ void test_full_lifecycle_with_physical_fram(void) {
         positions[0] -= 50; positions[1] -= 50; positions[2] -= 50; positions[3] -= 50;
         if (fram_write_needed) {
             write_state_to_fram(positions, logic.getUpperLimit());
+        }
+        
+        if (i % 10 == 0) {
+            update_test_display();
         }
     }
     

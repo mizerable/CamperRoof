@@ -10,12 +10,15 @@
 #define OLED_RESET     -1 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
+bool display_ready = false;
+
 bool setup_display() {
     // Note: Wire.begin() is assumed to be called in main.cpp for the shared I2C bus
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
         return false;
     }
     
+    display_ready = true;
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
@@ -38,6 +41,8 @@ const char* state_to_string(SystemState state) {
 }
 
 void update_display(const SharedState* state) {
+    if (!display_ready) return; // Prevent NULL pointer crash if display failed to init
+
     display.clearDisplay();
     display.setTextSize(1);
     display.setCursor(0, 0);
