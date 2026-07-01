@@ -19,6 +19,10 @@ bool setup_display() {
     }
     
     display_ready = true;
+    
+    // Dim the display to reduce brightness and avoid burn-in
+    display.dim(true);
+    
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SSD1306_WHITE);
