@@ -68,13 +68,7 @@ void update_display(const SharedState* state) {
         display.print(state->motors[i].currentPosition);
         display.print(F(" ("));
         display.print(state->motors[i].currentThrottle);
-        display.print(F("%)"));
-        // Display in 2 columns
-        if (i % 2 == 0) {
-            display.print(F(" | "));
-        } else {
-            display.println();
-        }
+        display.println(F("%)"));
     }
     
     if (state->state == SystemState::STATE_FAULT) {
