@@ -277,25 +277,6 @@ void test_set_up_updates_upper_limit(void) {
 
 
 // ---------------------------------------------------------
-// 5. HARDWARE ENCODER (PCNT) TESTS
-// ---------------------------------------------------------
-void test_pcnt_rollover_forward(void) {
-    int16_t last_pcnt = 32700;
-    int32_t accum_pos = 32700;
-    int16_t current_pcnt = -32700; // Passed 32767 and wrapped around
-    CoreLogic::updateAccumulatedPosition(current_pcnt, last_pcnt, accum_pos);
-    TEST_ASSERT_EQUAL(32836, accum_pos);
-    TEST_ASSERT_EQUAL(-32700, last_pcnt);
-}
-
-void test_pcnt_rollover_backward(void) {
-    int16_t last_pcnt = -32700;
-    int32_t accum_pos = -32700;
-    int16_t current_pcnt = 32700; // Underflowed past -32768
-    CoreLogic::updateAccumulatedPosition(current_pcnt, last_pcnt, accum_pos);
-    TEST_ASSERT_EQUAL(-32836, accum_pos);
-    TEST_ASSERT_EQUAL(32700, last_pcnt);
-}
 
 // ---------------------------------------------------------
 // 6. PROPORTIONAL CONTROL PHYSICS SIMULATION
@@ -554,8 +535,7 @@ void setup() {
     RUN_TEST(test_set_up_updates_upper_limit);
 
 
-    RUN_TEST(test_pcnt_rollover_forward);
-    RUN_TEST(test_pcnt_rollover_backward);
+
     RUN_TEST(test_proportional_feedback_convergence);
     RUN_TEST(test_fram_write_needed_flag_optimizations);
     RUN_TEST(test_upper_limit_prevents_up_allows_down);

@@ -17,19 +17,7 @@ bool setup_storage() {
     // Drop I2C clock to 50kHz for stability on breadboard
     Wire.setClock(50000);
 
-    Serial.println("\n--- I2C BUS SCAN ---");
-    int devices = 0;
-    for (uint8_t addr = 1; addr < 127; addr++) {
-        Wire.beginTransmission(addr);
-        if (Wire.endTransmission() == 0) {
-            Serial.printf("Found I2C device at 0x%02X\n", addr);
-            devices++;
-        }
-    }
-    if (devices == 0) {
-        Serial.println("No I2C devices found! The bus is completely dead!");
-    }
-    Serial.println("--------------------");
+
 
     // Attempt to initialize I2C FRAM at address 0x54
     if (!fram.begin(0x54)) {

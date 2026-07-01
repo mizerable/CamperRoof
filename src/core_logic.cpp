@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include "core_logic.h"
 
 CoreLogic::CoreLogic() {
@@ -10,9 +11,6 @@ void CoreLogic::setInitialState(int32_t positions[4], int32_t limit) {
     upperLimit = limit;
 }
 
-int CoreLogic::map_value(int x, int in_min, int in_max, int out_min, int out_max) {
-    return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
 
 void CoreLogic::apply_proportional_throttle(
     bool isLifting, 
@@ -35,9 +33,9 @@ void CoreLogic::apply_proportional_throttle(
         int32_t deviation = currentPositions[i] - midpoint;
 
         if (isLifting) {
-            throttle = map_value(deviation, -(MAX_DEVIATION/2), (MAX_DEVIATION/2), MAX_THROTTLE, MIN_THROTTLE);
+            throttle = map(deviation, -(MAX_DEVIATION/2), (MAX_DEVIATION/2), MAX_THROTTLE, MIN_THROTTLE);
         } else {
-            throttle = map_value(deviation, -(MAX_DEVIATION/2), (MAX_DEVIATION/2), MIN_THROTTLE, MAX_THROTTLE);
+            throttle = map(deviation, -(MAX_DEVIATION/2), (MAX_DEVIATION/2), MIN_THROTTLE, MAX_THROTTLE);
         }
 
         // Clamp
@@ -152,10 +150,4 @@ void CoreLogic::evaluate(
     }
 }
 
-void CoreLogic::updateAccumulatedPosition(int16_t current_pcnt, int16_t &last_pcnt, int32_t &accumulated_pos) {
-    // 16-bit signed integer wrapping logic
-    // This correctly handles rollover when the ESP32 hardware counter goes past 32767 to -32768
-    int16_t delta = (int16_t)(current_pcnt - last_pcnt);
-    last_pcnt = current_pcnt;
-    accumulated_pos += delta;
-}
+
