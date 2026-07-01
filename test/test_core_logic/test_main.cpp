@@ -517,6 +517,147 @@ void test_full_lifecycle_with_physical_fram(void) {
     TEST_ASSERT_EQUAL(25000, new_logic.getUpperLimit());
 }
 
+// ---------------------------------------------------------
+// 11. MOCK MOTOR PHYSICS INTEGRATION TESTS
+// ---------------------------------------------------------
+
+class MockMotor {
+public:
+    int32_t position = 0;
+    float loadFactor = 1.0f;
+    float nonLinearity = 1.0f; // Ex: motors might be less efficient at lower throttles
+    bool isStuck = false;
+
+    void update(int16_t throttle) {
+        if (isStuck) return;
+        
+        // Simulating physical friction: if throttle is too low, it won't move at all
+        if (abs(throttle) < 15) return; 
+
+        // Non-linear response curve: throttle^nonLinearity * loadFactor
+        float efficiency = 1.0f;
+        if (abs(throttle) < 50) efficiency = 0.8f; // Less efficient at low speeds
+        
+        position += (throttle * loadFactor * efficiency);
+    }
+};
+
+void test_simulated_physics_integration(void) {
+    // We will simulate 4 motors with completely different physical load characteristics.
+    MockMotor mm[4];
+    mm[0].loadFactor = 1.0f;  // Normal
+    mm[1].loadFactor = 0.7f;  // Heavy load, moves 30% slower for same power
+    mm[2].loadFactor = 1.2f;  // Light load, moves 20% faster
+    mm[3].loadFactor = 0.9f;  // Slightly heavy
+
+    // Reset global state
+    logic.setInitialState(positions, 20000); // Set a 20,000 pulse upper limit
+
+    // 1. SIMULATE LIFTING TO THE TOP
+    btn.up = true;
+    
+    // Simulate up to 20,000 loops. We should reach the top way before that.
+    bool reached_top = false;
+    for (int loop = 0; loop < 20000; loop++) {
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        
+        // Check for faults
+        TEST_ASSERT_NOT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+        
+        // Apply throttles to physical simulation
+        bool all_stopped = true;
+        for (int i = 0; i < 4; i++) {
+            mm[i].update(throttles[i]);
+            positions[i] = mm[i].position; // Feed physical reality back into the controller
+            if (throttles[i] > 0) all_stopped = false;
+        }
+
+        // Verify that deviation NEVER exceeds the fault threshold (500) during active movement!
+        for (int i = 0; i < 4; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                int32_t diff = abs(positions[i] - positions[j]);
+                TEST_ASSERT_LESS_THAN(500, diff);
+            }
+        }
+        
+        if (all_stopped && loop > 10) { 
+            // All motors have reached the upper limit and stopped.
+            reached_top = true;
+            break; 
+        }
+    }
+    
+    TEST_ASSERT_TRUE(reached_top);
+    // Verify they all parked right near the limit 
+    for(int i=0; i<4; i++) {
+        // Due to integer math and physics simulation steps, they might be slightly over/under, but should be extremely close
+        TEST_ASSERT_GREATER_OR_EQUAL(19950, positions[i]); 
+    }
+
+    // 2. SIMULATE LOWERING BACK TO 0
+    btn.up = false;
+    logic.evaluate(btn, positions, throttles, fram_write_needed); // Cycle to WAIT state
+    
+    btn.down = true;
+    bool reached_bottom = false;
+    for (int loop = 0; loop < 20000; loop++) {
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        TEST_ASSERT_NOT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+        
+        bool all_stopped = true;
+        for (int i = 0; i < 4; i++) {
+            mm[i].update(throttles[i]); // Throttles are negative when lowering
+            positions[i] = mm[i].position;
+            if (throttles[i] < 0) all_stopped = false;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                int32_t diff = abs(positions[i] - positions[j]);
+                TEST_ASSERT_LESS_THAN(500, diff);
+            }
+        }
+        
+        if (all_stopped && loop > 10) { 
+            reached_bottom = true;
+            break; 
+        }
+    }
+    
+    TEST_ASSERT_TRUE(reached_bottom);
+    for(int i=0; i<4; i++) {
+        TEST_ASSERT_LESS_OR_EQUAL(50, positions[i]); // Should park near 0 safely
+    }
+}
+
+void test_simulated_stuck_motor_fault(void) {
+    MockMotor mm[4];
+    mm[1].isStuck = true; // Simulating a mechanical jam on motor 1
+    
+    logic.setInitialState(positions, 20000);
+    btn.up = true;
+    
+    bool faulted = false;
+    for (int loop = 0; loop < 1000; loop++) {
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        
+        if (logic.getCurrentState() == SystemState::STATE_FAULT) {
+            faulted = true;
+            // Verify that once in fault, all throttles are instantly cut to 0
+            for(int i=0; i<4; i++) TEST_ASSERT_EQUAL(0, throttles[i]);
+            break;
+        }
+        
+        for (int i = 0; i < 4; i++) {
+            mm[i].update(throttles[i]);
+            positions[i] = mm[i].position; 
+        }
+    }
+    
+    // The system MUST detect the jam and fault out!
+    TEST_ASSERT_TRUE(faulted);
+}
+
 void setup() {
     delay(2000); // Wait 2 seconds for the Serial Monitor to connect over USB
     UNITY_BEGIN();
@@ -541,6 +682,8 @@ void setup() {
     RUN_TEST(test_upper_limit_prevents_up_allows_down);
     RUN_TEST(test_fault_retriggers_if_not_synced);
     RUN_TEST(test_full_lifecycle_with_physical_fram);
+    RUN_TEST(test_simulated_physics_integration);
+    RUN_TEST(test_simulated_stuck_motor_fault);
     UNITY_END();
 }
 
