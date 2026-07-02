@@ -234,6 +234,8 @@ void test_set_down_zeros_positions(void) {
     positions[0] = 1234;
     positions[1] = 5678;
     
+    // Initial limit 10000 (from setUp)
+    
     // 2. Enter SET state
     btn.set = true;
     logic.evaluate(btn, positions, throttles, fram_write_needed);
@@ -247,6 +249,10 @@ void test_set_down_zeros_positions(void) {
     for(int i=0; i<4; i++) {
         TEST_ASSERT_EQUAL(0, positions[i]);
     }
+    
+    // 5. Verify upper limit shifted down by max_pos (5678)
+    // 10000 - 5678 = 4322
+    TEST_ASSERT_EQUAL(4322, logic.getUpperLimit());
 }
 
 /**
@@ -705,11 +711,19 @@ void test_simulated_physics_set_down_zeroes_positions(void) {
     btn.down = false;
     logic.evaluate(btn, positions, throttles, fram_write_needed); // Enter SET state
     
+    int32_t expected_max_pos = positions[0];
+    for(int i=1; i<4; i++) {
+        if(positions[i] > expected_max_pos) expected_max_pos = positions[i];
+    }
+    
     btn.down = true;
     logic.evaluate(btn, positions, throttles, fram_write_needed); // Zero positions
     
     // Verify immediately zeroed
     for (int i=0; i<4; i++) TEST_ASSERT_EQUAL(0, positions[i]);
+    
+    // Verify upper limit correctly shifted down to prevent crashing through physical ceiling
+    TEST_ASSERT_EQUAL(20000 - expected_max_pos, logic.getUpperLimit());
     
     // 4. Run physics loop a few times and ensure it STAYS zeroed (the bug fix)
     for (int loop = 0; loop < 10; loop++) {

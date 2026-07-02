@@ -138,6 +138,7 @@ void CoreLogic::evaluate(
                 fram_write_needed = true;
             } else {
                 if (btn.down) {
+                    upperLimit -= max_pos;
                     for (int i = 0; i < 4; i++) currentPositions[i] = 0;
                     fram_write_needed = true; // limits changed
                 }
