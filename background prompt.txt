@@ -78,6 +78,9 @@ in the LOWERING state, if the CLEAR_BUTTON is also held down then ignore the low
 The reason for these two overrides is because the operator will be watching carefully and will want to fine tune the limits, which 
 may be outside the bounds of the current limits. 
 
+you MUST use as little custom logic as possible. Whenever possible you MUST use existing libraries and APIs and produce only the 
+cleanest code and keep only the bare minimum amount of logic in our code here.
+
 ---
 ### ADDENDUM: Architectural Decisions & Clarifications (Added post-review)
 

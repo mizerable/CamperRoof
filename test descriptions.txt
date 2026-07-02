@@ -46,6 +46,13 @@ levels. you MUST write an integration test that uses these fake / mock motors to
 its entire range to lowering. You MUST simulate cases where the algorithm we have for the floating midpoint can address the different 
 motor responses. you MUST also write test cases where we test triggering the FAULT state because the fake/mock motor is stuck.
 
+12. you MUST test that pulse counter logic accounts for wrap-around situations both in lifting and lowering.
+
+13. you MUST test that the pulse counter logic still works in FAULT mode, simulating a case where the roof is racked, and i am 
+manually jogging the roof into sync using the buttons on the cytrons. However since the hall effect sensors will still be firing 
+pulses you MUST make sure these pulses are still updating our position and those positions are stored to FRAM like usual
+even in FAULT mode.
+
 
 I expect dozens and dozens of tests. you MUST be extremely thorough with the sequences and combinations of user input and motor 
 behavior. You MUST also write unit tests that test the various modules and functions individually and in isolation, mocking 
