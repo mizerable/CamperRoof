@@ -20,12 +20,10 @@ public:
     //  - currentPositions: current positions of the 4 motors
     // Outputs:
     //  - throttles: the calculated throttles to send to the 4 motors
-    //  - fram_write_needed: set to true if the storage needs to be updated this cycle
     void evaluate(
         const ButtonState& btn,
         int32_t currentPositions[4],
-        int16_t throttles[4],
-        bool& fram_write_needed
+        int16_t throttles[4]
     );
 
     // Getters for current state

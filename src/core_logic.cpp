@@ -64,11 +64,8 @@ void CoreLogic::apply_proportional_throttle(
 void CoreLogic::evaluate(
     const ButtonState& btn,
     int32_t currentPositions[4],
-    int16_t throttles[4],
-    bool& fram_write_needed
+    int16_t throttles[4]
 ) {
-    fram_write_needed = false; 
-    
     // Default throttles to 0
     for(int i=0; i<4; i++) throttles[i] = 0;
 
@@ -84,7 +81,6 @@ void CoreLogic::evaluate(
         && (max_pos - min_pos > MAX_DEVIATION)
         && (!btn.clr)) {
         currentState = SystemState::STATE_FAULT;
-        fram_write_needed = true; // State changed, persist
     }
 
     // 2. State Machine
@@ -92,20 +88,16 @@ void CoreLogic::evaluate(
         case SystemState::STATE_WAIT:
             if (btn.up && !btn.down && !btn.set) {
                 currentState = SystemState::STATE_LIFTING;
-                fram_write_needed = true;
             } else if (!btn.up && btn.down && !btn.set) {
                 currentState = SystemState::STATE_LOWERING;
-                fram_write_needed = true;
             } else if (!btn.up && !btn.down && btn.set && !btn.clr) {
                 currentState = SystemState::STATE_SET;
-                fram_write_needed = true;
             }
             break;
 
         case SystemState::STATE_LIFTING:
             if (!btn.up) {
                 currentState = SystemState::STATE_WAIT;
-                fram_write_needed = true;
             } else {
                 apply_proportional_throttle(true, btn.clr, currentPositions, throttles);
             }
@@ -114,7 +106,6 @@ void CoreLogic::evaluate(
         case SystemState::STATE_LOWERING:
             if (!btn.down) {
                 currentState = SystemState::STATE_WAIT;
-                fram_write_needed = true;
             } else {
                 apply_proportional_throttle(false, btn.clr, currentPositions, throttles);
             }
@@ -126,7 +117,6 @@ void CoreLogic::evaluate(
                 if (fault_clear_timer >= (5000 / LOOP_PERIOD_MS)) { // 5 seconds
                     currentState = SystemState::STATE_WAIT;
                     fault_clear_timer = 0;
-                    fram_write_needed = true;
                 }
             } else {
                 fault_clear_timer = 0;
@@ -136,16 +126,17 @@ void CoreLogic::evaluate(
         case SystemState::STATE_SET:
             if (!btn.set) {
                 currentState = SystemState::STATE_WAIT;
-                fram_write_needed = true;
             } else {
-                if (btn.down) {
-                    upperLimit -= max_pos;
+                if (btn.down && !btn.up && !btn.clr) {
+                    int32_t max_pos_for_limit = currentPositions[0];
+                    for (int i = 1; i < 4; i++) {
+                        if (currentPositions[i] > max_pos_for_limit) max_pos_for_limit = currentPositions[i];
+                    }
+                    upperLimit -= max_pos_for_limit;
                     for (int i = 0; i < 4; i++) currentPositions[i] = 0;
-                    fram_write_needed = true; // limits changed
                 }
-                if (btn.up) {
+                else if (btn.up && !btn.down && !btn.clr) {
                     upperLimit = max_pos;
-                    fram_write_needed = true; // limits changed
                 }
             }
             break;

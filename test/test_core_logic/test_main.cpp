@@ -3,13 +3,13 @@
 #include <Wire.h>
 #include "storage.h"
 #include "core_logic.h"
+#include "pcnt_setup.h"
 #include "display.h"
 
 CoreLogic logic;
 ButtonState btn;
 int32_t positions[4];
 int16_t throttles[4];
-bool fram_write_needed;
 
 void setUp(void) {
     // Reset all inputs to their default states before every single test
@@ -47,7 +47,7 @@ void test_initial_state(void) {
  */
 void test_wait_to_lifting(void) {
     btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
 }
 
@@ -58,7 +58,7 @@ void test_wait_to_lifting(void) {
  */
 void test_wait_to_lowering(void) {
     btn.down = true; 
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_LOWERING, logic.getCurrentState());
 }
 
@@ -69,7 +69,7 @@ void test_wait_to_lowering(void) {
  */
 void test_wait_to_set(void) {
     btn.set = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_SET, logic.getCurrentState());
 }
 
@@ -81,7 +81,7 @@ void test_wait_to_set(void) {
 void test_invalid_buttons_ignored(void) {
     btn.up = true;
     btn.down = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
 }
 
@@ -97,7 +97,7 @@ void test_invalid_buttons_ignored(void) {
 void test_upper_limit_stops_motor(void) {
     // 1. Enter LIFTING state
     btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
 
     // 2. All motors move up together to avoid triggering a max-deviation fault.
@@ -106,7 +106,7 @@ void test_upper_limit_stops_motor(void) {
     positions[1] = 9800; 
     positions[2] = 9800;
     positions[3] = 9800;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // 3. Verify Motor 0 is stopped, but Motor 1 is still moving.
     TEST_ASSERT_EQUAL(0, throttles[0]);
@@ -121,7 +121,7 @@ void test_upper_limit_stops_motor(void) {
 void test_lower_limit_stops_motor(void) {
     // 1. Enter LOWERING state
     btn.down = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_LOWERING, logic.getCurrentState());
 
     // 2. Simulate motors moving down. Motor 0 hits the bottom (0).
@@ -129,7 +129,7 @@ void test_lower_limit_stops_motor(void) {
     positions[1] = 200;
     positions[2] = 200;
     positions[3] = 200;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // 3. Verify Motor 0 is stopped.
     TEST_ASSERT_EQUAL(0, throttles[0]);
@@ -144,7 +144,7 @@ void test_override_limits(void) {
     // 1. Enter LIFTING state with CLEAR button held
     btn.up = true;
     btn.clr = true; 
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
 
     // 2. Simulate motors being forced way past the 10,000 limit.
@@ -152,7 +152,7 @@ void test_override_limits(void) {
     positions[1] = 14800;
     positions[2] = 14800;
     positions[3] = 14800;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // 3. Verify that throttle is still non-zero because the limits were overridden.
     TEST_ASSERT_NOT_EQUAL(0, throttles[0]);
@@ -171,13 +171,13 @@ void test_override_limits(void) {
 void test_fault_deviation(void) {
     // 1. Enter LIFTING state
     btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
 
     // 2. Simulate a mechanical failure where Motor 0 stops moving
     positions[0] = 0;
     positions[1] = 600; // Drift is now 600, which is > 500
     
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // 3. Verify system panics into FAULT state
     TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
@@ -196,10 +196,10 @@ void test_fault_deviation(void) {
 void test_fault_clear(void) {
     // 1. Force the system into a FAULT
     btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     positions[0] = 0;
     positions[1] = 600;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
 
     // 2. Release the UP button, and press SET + CLEAR
@@ -209,13 +209,13 @@ void test_fault_clear(void) {
     
     // 3. Simulate holding the buttons for 4.98 seconds (249 loops)
     for (int i=0; i<249; i++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         // Ensure it is still locked in FAULT
         TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
     }
     
     // 4. Simulate the 250th loop (exactly 5.00 seconds)
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     // Ensure it successfully unlocked and returned to WAIT
     TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
 }
@@ -238,21 +238,47 @@ void test_set_down_zeros_positions(void) {
     
     // 2. Enter SET state
     btn.set = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_SET, logic.getCurrentState());
 
     // 3. Press DOWN to calibrate
     btn.down = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // 4. Verify all position trackers were reset to 0
     for(int i=0; i<4; i++) {
         TEST_ASSERT_EQUAL(0, positions[i]);
     }
     
-    // 5. Verify upper limit shifted down by max_pos (5678)
-    // 10000 - 5678 = 4322
-    TEST_ASSERT_EQUAL(4322, logic.getUpperLimit());
+    // 5. Verify upper limit did NOT shift down
+    // 10000 -> 10000
+    TEST_ASSERT_EQUAL(10000, logic.getUpperLimit());
+}
+
+void test_set_down_zeros_positions_and_reduces_upper_limit(void) {
+    // 1. Simulate motors being at various positions, with upper limit at 10000
+    positions[0] = 1000;
+    positions[1] = 800;
+    positions[2] = 1050; // max pos is 1050
+    positions[3] = 950;
+    logic.setInitialState(positions, 10000); // Manually inject upper limit of 10000
+    
+    // 2. Enter SET state
+    btn.set = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_SET, logic.getCurrentState());
+
+    // 3. Press DOWN to calibrate
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    
+    // 4. Verify all position trackers were reset to 0
+    for(int i=0; i<4; i++) {
+        TEST_ASSERT_EQUAL(0, positions[i]);
+    }
+    
+    // 5. Verify upper limit was reduced by the max position (10000 - 1050 = 8950)
+    TEST_ASSERT_EQUAL(8950, logic.getUpperLimit());
 }
 
 /**
@@ -267,11 +293,11 @@ void test_set_up_updates_upper_limit(void) {
     
     // 2. Enter SET state
     btn.set = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // 3. Press UP to calibrate
     btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // 4. Verify the upper limit was saved as the highest motor position (5678)
     TEST_ASSERT_EQUAL(5678, logic.getUpperLimit());
@@ -295,7 +321,7 @@ void test_proportional_feedback_convergence(void) {
     // Motor 0 is mathematically simulated to move 1.2x faster for a given PWM.
     // Motor 1 is mathematically simulated to move 0.8x slower for a given PWM.
     for (int loop = 0; loop < 100; loop++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         TEST_ASSERT_NOT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
         
         positions[0] += (throttles[0] * 1.2); 
@@ -314,27 +340,6 @@ void test_proportional_feedback_convergence(void) {
 // ---------------------------------------------------------
 // 7. PERSISTENCE (FRAM) TESTS
 // ---------------------------------------------------------
-void test_fram_write_needed_flag_optimizations(void) {
-    // Idle -> should not write
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
-    TEST_ASSERT_FALSE(fram_write_needed);
-    
-    // Press UP -> State changed to LIFTING -> should write
-    btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
-    TEST_ASSERT_TRUE(fram_write_needed);
-    
-    // Release UP -> State changed to WAIT -> should write
-    btn.up = false;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
-    TEST_ASSERT_TRUE(fram_write_needed);
-    
-    // Idle again -> should NOT write
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
-    TEST_ASSERT_FALSE(fram_write_needed);
-}
-
-// ---------------------------------------------------------
 // 8. DIRECTIONAL LIMIT TESTS
 // ---------------------------------------------------------
 void test_upper_limit_prevents_up_allows_down(void) {
@@ -345,22 +350,22 @@ void test_upper_limit_prevents_up_allows_down(void) {
     
     // Try UP (transitions to LIFTING)
     btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // Evaluate again (actually processes LIFTING and computes throttle)
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(0, throttles[0]); 
     
     // Release UP (requires 1 tick to transition from LIFTING back to WAIT)
     btn.up = false;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // Press DOWN (transitions to LOWERING)
     btn.down = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // Evaluate again (actually processes LOWERING and computes throttle)
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     TEST_ASSERT_NOT_EQUAL(0, throttles[0]); // Allowed to move down!
 }
@@ -377,8 +382,8 @@ void test_fault_recovery_with_override(void) {
     positions[0] = 0;
     positions[1] = 600;
     btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed); // transitions to LIFTING
-    logic.evaluate(btn, positions, throttles, fram_write_needed); // triggers FAULT
+    logic.evaluate(btn, positions, throttles); // transitions to LIFTING
+    logic.evaluate(btn, positions, throttles); // triggers FAULT
     TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
 
     // 2. Clear fault to WAIT
@@ -386,7 +391,7 @@ void test_fault_recovery_with_override(void) {
     btn.set = true;
     btn.clr = true;
     for (int i=0; i<250; i++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
     }
     TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
 
@@ -396,10 +401,10 @@ void test_fault_recovery_with_override(void) {
     btn.up = true;
     
     // First loop transitions WAIT -> LIFTING
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // Second loop sees LIFTING + massive deviation -> instantly transitions back to FAULT
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
     
     // 4. Clear fault again
@@ -407,7 +412,7 @@ void test_fault_recovery_with_override(void) {
     btn.set = true;
     btn.clr = true;
     for (int i=0; i<250; i++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
     }
     TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
 
@@ -417,11 +422,11 @@ void test_fault_recovery_with_override(void) {
     btn.up = true;
     
     // First loop transitions WAIT -> LIFTING
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
     
     // Second loop sees LIFTING + massive deviation, but CLEAR is held, so it DOES NOT FAULT!
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
 }
 // ---------------------------------------------------------
@@ -463,38 +468,29 @@ void test_full_lifecycle_with_physical_fram(void) {
     // 3. User pushes UP, lifts to 25000 pulses
     btn.up = true;
     for (int i=0; i<500; i++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         positions[0] += 50; positions[1] += 50; positions[2] += 50; positions[3] += 50;
-        if (fram_write_needed) {
-            write_state_to_fram(positions, logic.getUpperLimit());
-        }
-        
-        // Update the physical screen occasionally to not flood the I2C bus too much
-        if (i % 10 == 0) {
-            update_test_display();
-        }
-        
-        delay(2); // Prevent I2C bus flood (simulates real-world loop delay but sped up 10x for testing)
+        write_state_to_fram(positions, logic.getUpperLimit());
+        delay(2); // Prevent I2C bus flood and WDT crashes
     }
+    update_test_display();
     
     // 4. User sets new Upper Limit
     // First, user releases UP button to stop lifting and enter WAIT state
     btn.up = false;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
-    if (fram_write_needed) write_state_to_fram(positions, logic.getUpperLimit());
+    logic.evaluate(btn, positions, throttles);
+    write_state_to_fram(positions, logic.getUpperLimit());
     update_test_display();
     
     // User presses SET to enter SET state
     btn.set = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     update_test_display();
     
     // User presses UP to lock in the new upper limit
     btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
-    if (fram_write_needed) {
-        write_state_to_fram(positions, logic.getUpperLimit());
-    }
+    logic.evaluate(btn, positions, throttles);
+    write_state_to_fram(positions, logic.getUpperLimit());
     update_test_display();
     
     // 5. User lowers roof to 5000 pulses
@@ -502,23 +498,16 @@ void test_full_lifecycle_with_physical_fram(void) {
     btn.up = false;
     btn.down = true;
     for (int i=0; i<400; i++) { // Lower by 20000
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         positions[0] -= 50; positions[1] -= 50; positions[2] -= 50; positions[3] -= 50;
-        if (fram_write_needed) {
-            write_state_to_fram(positions, logic.getUpperLimit());
-        }
-        
-        if (i % 10 == 0) {
-            update_test_display();
-        }
+        write_state_to_fram(positions, logic.getUpperLimit());
+        delay(2); // Prevent I2C bus flood and WDT crashes
     }
     
     // 5.5 USER RELEASES BUTTON (Triggers the final FRAM save of the 5000 positions!)
     btn.down = false;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
-    if (fram_write_needed) {
-        write_state_to_fram(positions, logic.getUpperLimit());
-    }
+    logic.evaluate(btn, positions, throttles);
+    write_state_to_fram(positions, logic.getUpperLimit());
     
     // Check local RAM state
     TEST_ASSERT_EQUAL(5000, positions[0]);
@@ -590,7 +579,7 @@ void test_simulated_physics_integration(void) {
     // Simulate up to 20,000 loops. We should reach the top way before that.
     bool reached_top = false;
     for (int loop = 0; loop < 20000; loop++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         
         // Check for faults
         TEST_ASSERT_NOT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
@@ -632,12 +621,12 @@ void test_simulated_physics_integration(void) {
 
     // 2. SIMULATE LOWERING BACK TO 0
     btn.up = false;
-    logic.evaluate(btn, positions, throttles, fram_write_needed); // Cycle to WAIT state
+    logic.evaluate(btn, positions, throttles); // Cycle to WAIT state
     
     btn.down = true;
     bool reached_bottom = false;
     for (int loop = 0; loop < 20000; loop++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         TEST_ASSERT_NOT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
         
         bool all_stopped = true;
@@ -681,7 +670,7 @@ void test_simulated_stuck_motor_fault(void) {
     bool faulted = false;
     int32_t last_ticks[4] = {0, 0, 0, 0};
     for (int loop = 0; loop < 1000; loop++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         
         if (logic.getCurrentState() == SystemState::STATE_FAULT) {
             faulted = true;
@@ -712,7 +701,7 @@ void test_simulated_physics_set_down_zeroes_positions(void) {
     btn.up = true;
     int32_t last_ticks[4] = {0, 0, 0, 0};
     for (int loop = 0; loop < 100; loop++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         for (int i = 0; i < 4; i++) {
             mm[i].update(throttles[i]);
             int32_t current_ticks = mm[i].position;
@@ -727,12 +716,12 @@ void test_simulated_physics_set_down_zeroes_positions(void) {
     
     // 2. Wait state
     btn.up = false;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    logic.evaluate(btn, positions, throttles);
     
     // 3. SET + DOWN to zero positions
     btn.set = true;
     btn.down = false;
-    logic.evaluate(btn, positions, throttles, fram_write_needed); // Enter SET state
+    logic.evaluate(btn, positions, throttles); // Enter SET state
     
     int32_t expected_max_pos = positions[0];
     for(int i=1; i<4; i++) {
@@ -740,17 +729,17 @@ void test_simulated_physics_set_down_zeroes_positions(void) {
     }
     
     btn.down = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed); // Zero positions
+    logic.evaluate(btn, positions, throttles); // Zero positions
     
     // Verify immediately zeroed
     for (int i=0; i<4; i++) TEST_ASSERT_EQUAL(0, positions[i]);
     
-    // Verify upper limit correctly shifted down to prevent crashing through physical ceiling
+    // Verify upper limit correctly shifted down
     TEST_ASSERT_EQUAL(20000 - expected_max_pos, logic.getUpperLimit());
     
     // 4. Run physics loop a few times and ensure it STAYS zeroed (the bug fix)
     for (int loop = 0; loop < 10; loop++) {
-        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        logic.evaluate(btn, positions, throttles);
         for (int i = 0; i < 4; i++) {
             mm[i].update(throttles[i]);
             int32_t current_ticks = mm[i].position;
@@ -765,7 +754,10 @@ void test_simulated_physics_set_down_zeroes_positions(void) {
 }
 
 void setup() {
-    delay(2000); // Wait 2 seconds for the Serial Monitor to connect over USB
+    delay(2000); // Give time for Serial monitor to attach
+    
+    setup_pcnt(); // Initialize hardware PCNT so mock tests don't crash when setCount is called
+    
     UNITY_BEGIN();
     
     RUN_TEST(test_initial_state);
@@ -778,13 +770,13 @@ void setup() {
     RUN_TEST(test_override_limits);
     RUN_TEST(test_fault_deviation);
     RUN_TEST(test_fault_clear);
-    RUN_TEST(test_set_down_zeros_positions);
+    extern void test_set_down_zeros_positions_and_reduces_upper_limit(void);
+    RUN_TEST(test_set_down_zeros_positions_and_reduces_upper_limit);
     RUN_TEST(test_set_up_updates_upper_limit);
 
 
 
     RUN_TEST(test_proportional_feedback_convergence);
-    RUN_TEST(test_fram_write_needed_flag_optimizations);
     RUN_TEST(test_upper_limit_prevents_up_allows_down);
     RUN_TEST(test_fault_recovery_with_override);
     RUN_TEST(test_full_lifecycle_with_physical_fram);
@@ -794,8 +786,72 @@ void setup() {
     // Test that will be added below
     extern void test_simulated_physics_set_down_zeroes_positions(void);
     RUN_TEST(test_simulated_physics_set_down_zeroes_positions);
-    
+
+    extern void test_wait_up_and_down_ignored(void);
+    RUN_TEST(test_wait_up_and_down_ignored);
+
+    extern void test_wait_set_and_down_ignored(void);
+    RUN_TEST(test_wait_set_and_down_ignored);
+
+    extern void test_lifting_down_ignored(void);
+    RUN_TEST(test_lifting_down_ignored);
+
+    extern void test_set_up_and_down_ignored(void);
+    RUN_TEST(test_set_up_and_down_ignored);
+
+    extern void test_override_limits_lowering(void);
+    RUN_TEST(test_override_limits_lowering);
+
     UNITY_END();
+}
+
+void test_wait_up_and_down_ignored(void) {
+    btn.up = true;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+}
+
+void test_wait_set_and_down_ignored(void) {
+    btn.set = true;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+}
+
+void test_lifting_down_ignored(void) {
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
+}
+
+void test_set_up_and_down_ignored(void) {
+    btn.set = true;
+    logic.evaluate(btn, positions, throttles);
+    btn.up = true;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(10000, logic.getUpperLimit()); // Limit unchanged
+    TEST_ASSERT_EQUAL(SystemState::STATE_SET, logic.getCurrentState());
+}
+
+void test_override_limits_lowering(void) {
+    btn.down = true;
+    btn.clr = true; 
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_LOWERING, logic.getCurrentState());
+
+    positions[0] = -500;
+    positions[1] = -500;
+    positions[2] = -500;
+    positions[3] = -500;
+    logic.evaluate(btn, positions, throttles);
+    
+    // Should still have throttle despite being < 0
+    TEST_ASSERT_NOT_EQUAL(0, throttles[0]);
 }
 
 void loop() {

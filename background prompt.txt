@@ -40,7 +40,9 @@ SET_BUTTON and CLEAR_BUTTON for 5 seconds, which will clear the fault and transi
 
 There is the SET state, which can only be entered from the WAIT state. hitting the SET_BUTTON enters the SET state.
 releasing the SET button while in the SET state transitions back to the WAIT state. While in the SET state 
-hitting the DOWN_BUTTON sets the CURRENT_POSITION of all the motors to 0. While in the SET state hitting the UP_BUTTON
+hitting the DOWN_BUTTON sets the CURRENT_POSITION of all the motors to 0 and ALSO adjusts the upper travel limit downwards by the 
+the max current position of the motors (this is so the physical position of the upper limit stays the same, if we 
+do not do this adjustment the actual physical position of the upper limit would shift up! you MUST cover this case in tests). While in the SET state hitting the UP_BUTTON
 sets the UPPER_LIMIT  to the highest CURRENT_POSITION of the 4 motors , and the other 3 motors' CURRENT_POSITION is also
 set to this value. 
 
@@ -60,7 +62,7 @@ LOWERING, SET , etc...) as explained above.  If in the interation we determine t
 yet settled and remained unchanged for 3 iterations then we do nothing in this iteration and simply wait out the time
 and do nothing and proceed to the next iteration. 
 
-Every iteration also write the global variables to FRAM so they are not lost. 
+Every iteration you MUST write the global variables to FRAM so they are not lost. 
 
 Every 20 iterations write the global variables and the current state to the I2C screen. there are two cores on this ESP32
 so figure out a way to do this I2C stuff in a way that doesn't threaten the core motor control loop timing.
@@ -78,8 +80,13 @@ in the LOWERING state, if the CLEAR_BUTTON is also held down then ignore the low
 The reason for these two overrides is because the operator will be watching carefully and will want to fine tune the limits, which 
 may be outside the bounds of the current limits. 
 
-you MUST use as little custom logic as possible. Whenever possible you MUST use existing libraries and APIs and produce only the 
-cleanest code and keep only the bare minimum amount of logic in our code here.
+you MUST write as little custom logic as possible. In otherwords, use as much existing avialable code in the ESP32 ecosystem as posssible. 
+ Whenever possible you MUST use existing libraries and APIs and produce only the cleanest 
+ code and write only the bare minimum amount of logic needed to make it all work.
+
+there must be NO setting of the PCNT pulse counters. you MUST only read them to get pulse counts for purposes of deriving a delta 
+to update our current position. you MUST NOT rely on the pulse counters for an absolute position in anyway. they MUST only be used 
+to derive iteration-to-iteration deltas for udpating our true absolute positions. you MUST ensure this and verify this is true.
 
 ---
 ### ADDENDUM: Architectural Decisions & Clarifications (Added post-review)

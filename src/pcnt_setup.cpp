@@ -22,8 +22,11 @@ void setup_pcnt() {
 }
 
 void update_pcnt_counts(int32_t currentPositions[4]) {
+    static int32_t last_counts[4] = {0, 0, 0, 0};
     for (int i = 0; i < 4; i++) {
-        // Retrieve the 64-bit count and cast to 32-bit (which is plenty)
-        currentPositions[i] = (int32_t)encoders[i].getCount();
+        int32_t current_count = (int32_t)encoders[i].getCount();
+        int32_t delta = current_count - last_counts[i];
+        last_counts[i] = current_count;
+        currentPositions[i] += delta;
     }
 }

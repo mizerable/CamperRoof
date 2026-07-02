@@ -81,17 +81,14 @@ static void MotorTask(void *pvParameters) {
 
     // 2. Evaluate Core Logic
     int16_t throttles[4];
-    bool fram_write_needed = false;
 
-    coreLogic.evaluate(btn, currentPositions, throttles, fram_write_needed);
+    coreLogic.evaluate(btn, currentPositions, throttles);
 
     // 3. Apply Hardware/Mock Outputs
     g_motorSystem->setThrottles(throttles);
 
     // 4. Persistence & UI Sync
-    if (fram_write_needed) {
-      write_state_to_fram(currentPositions, coreLogic.getUpperLimit());
-    }
+    write_state_to_fram(currentPositions, coreLogic.getUpperLimit());
 
     if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
       systemState.state = coreLogic.getCurrentState();
