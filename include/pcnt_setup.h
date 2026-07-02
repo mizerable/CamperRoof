@@ -7,5 +7,6 @@ void setup_pcnt();
 
 // Read the current absolute position
 void update_pcnt_counts(int32_t currentPositions[4]);
+void pcnt_set_counts(const int32_t counts[4]);
 
 #endif // PCNT_SETUP_H

@@ -27,3 +27,9 @@ void update_pcnt_counts(int32_t currentPositions[4]) {
         currentPositions[i] = (int32_t)encoders[i].getCount();
     }
 }
+
+void pcnt_set_counts(const int32_t counts[4]) {
+    for (int i = 0; i < 4; i++) {
+        encoders[i].setCount(counts[i]);
+    }
+}

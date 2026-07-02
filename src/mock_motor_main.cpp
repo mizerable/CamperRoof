@@ -1,13 +1,13 @@
 #include <Arduino.h>
 #include "app_runner.h"
-#include "HardwareMotorSystem.h"
+#include "MockMotorSystem.h"
 
-HardwareMotorSystem hardwareMotors;
+MockMotorSystem mockMotors;
 
 #ifndef PIO_UNIT_TESTING
 
 void setup() {
-    AppRunner::start(&hardwareMotors);
+    AppRunner::start(&mockMotors);
 }
 
 void loop() {
