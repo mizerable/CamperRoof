@@ -81,7 +81,8 @@ void CoreLogic::evaluate(
     }
     
     if ((currentState == SystemState::STATE_LIFTING || currentState == SystemState::STATE_LOWERING) 
-        && (max_pos - min_pos > MAX_DEVIATION)) {
+        && (max_pos - min_pos > MAX_DEVIATION)
+        && (!btn.clr)) {
         currentState = SystemState::STATE_FAULT;
         fram_write_needed = true; // State changed, persist
     }

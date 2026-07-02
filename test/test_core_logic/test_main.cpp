@@ -366,18 +366,19 @@ void test_upper_limit_prevents_up_allows_down(void) {
 }
 
 
+// ---------------------------------------------------------
+// 9. FAULT OVERRIDE TESTS
+// ---------------------------------------------------------
 /**
- * @brief Verifies Requirement 9: Clearing a fault without fixing the sync instantly faults again.
- * Action: Trigger a FAULT. Clear it to WAIT. Try to move UP without syncing.
- * Expected: State instantly reverts to FAULT.
+ * @brief Verifies that a user can manually jog the motors to fix a fault by holding CLEAR.
  */
-void test_fault_retriggers_if_not_synced(void) {
-    // 1. Force into fault
-    btn.up = true;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+void test_fault_recovery_with_override(void) {
+    // 1. Force a fault by manually un-syncing positions
     positions[0] = 0;
     positions[1] = 600;
-    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles, fram_write_needed); // transitions to LIFTING
+    logic.evaluate(btn, positions, throttles, fram_write_needed); // triggers FAULT
     TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
 
     // 2. Clear fault to WAIT
@@ -389,7 +390,7 @@ void test_fault_retriggers_if_not_synced(void) {
     }
     TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
 
-    // 3. Try to move UP again (positions are still out of sync by 600)
+    // 3. Try to move UP again without CLEAR (positions are still out of sync by 600)
     btn.set = false;
     btn.clr = false;
     btn.up = true;
@@ -400,6 +401,28 @@ void test_fault_retriggers_if_not_synced(void) {
     // Second loop sees LIFTING + massive deviation -> instantly transitions back to FAULT
     logic.evaluate(btn, positions, throttles, fram_write_needed);
     TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+    
+    // 4. Clear fault again
+    btn.up = false;
+    btn.set = true;
+    btn.clr = true;
+    for (int i=0; i<250; i++) {
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+    }
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+
+    // 5. Try to move UP while holding CLEAR
+    btn.set = false;
+    btn.clr = true; // HOLD CLEAR TO OVERRIDE FAULT CHECK
+    btn.up = true;
+    
+    // First loop transitions WAIT -> LIFTING
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
+    
+    // Second loop sees LIFTING + massive deviation, but CLEAR is held, so it DOES NOT FAULT!
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
 }
 // ---------------------------------------------------------
 // 10. PHYSICAL FRAM INTEGRATION TEST
@@ -763,7 +786,7 @@ void setup() {
     RUN_TEST(test_proportional_feedback_convergence);
     RUN_TEST(test_fram_write_needed_flag_optimizations);
     RUN_TEST(test_upper_limit_prevents_up_allows_down);
-    RUN_TEST(test_fault_retriggers_if_not_synced);
+    RUN_TEST(test_fault_recovery_with_override);
     RUN_TEST(test_full_lifecycle_with_physical_fram);
     RUN_TEST(test_simulated_physics_integration);
     RUN_TEST(test_simulated_stuck_motor_fault);
