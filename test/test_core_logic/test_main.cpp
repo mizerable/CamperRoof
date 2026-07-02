@@ -556,6 +556,8 @@ void test_simulated_physics_integration(void) {
     // 1. SIMULATE LIFTING TO THE TOP
     btn.up = true;
     
+    int32_t last_ticks[4] = {0, 0, 0, 0};
+    
     // Simulate up to 20,000 loops. We should reach the top way before that.
     bool reached_top = false;
     for (int loop = 0; loop < 20000; loop++) {
@@ -564,11 +566,16 @@ void test_simulated_physics_integration(void) {
         // Check for faults
         TEST_ASSERT_NOT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
         
-        // Apply throttles to physical simulation
+        // Apply throttles to physical simulation and calculate deltas
         bool all_stopped = true;
         for (int i = 0; i < 4; i++) {
             mm[i].update(throttles[i]);
-            positions[i] = mm[i].position; // Feed physical reality back into the controller
+            
+            int32_t current_ticks = mm[i].position;
+            int32_t delta = current_ticks - last_ticks[i];
+            positions[i] += delta;
+            last_ticks[i] = current_ticks;
+            
             if (throttles[i] > 0) all_stopped = false;
         }
 
@@ -607,7 +614,12 @@ void test_simulated_physics_integration(void) {
         bool all_stopped = true;
         for (int i = 0; i < 4; i++) {
             mm[i].update(throttles[i]); // Throttles are negative when lowering
-            positions[i] = mm[i].position;
+            
+            int32_t current_ticks = mm[i].position;
+            int32_t delta = current_ticks - last_ticks[i];
+            positions[i] += delta;
+            last_ticks[i] = current_ticks;
+            
             if (throttles[i] < 0) all_stopped = false;
         }
 
@@ -638,6 +650,7 @@ void test_simulated_stuck_motor_fault(void) {
     btn.up = true;
     
     bool faulted = false;
+    int32_t last_ticks[4] = {0, 0, 0, 0};
     for (int loop = 0; loop < 1000; loop++) {
         logic.evaluate(btn, positions, throttles, fram_write_needed);
         
@@ -650,12 +663,68 @@ void test_simulated_stuck_motor_fault(void) {
         
         for (int i = 0; i < 4; i++) {
             mm[i].update(throttles[i]);
-            positions[i] = mm[i].position; 
+            
+            int32_t current_ticks = mm[i].position;
+            int32_t delta = current_ticks - last_ticks[i];
+            positions[i] += delta;
+            last_ticks[i] = current_ticks;
         }
     }
     
     // The system MUST detect the jam and fault out!
     TEST_ASSERT_TRUE(faulted);
+}
+
+void test_simulated_physics_set_down_zeroes_positions(void) {
+    MockMotor mm[4];
+    logic.setInitialState(positions, 20000);
+    
+    // 1. Lift for 100 loops
+    btn.up = true;
+    int32_t last_ticks[4] = {0, 0, 0, 0};
+    for (int loop = 0; loop < 100; loop++) {
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        for (int i = 0; i < 4; i++) {
+            mm[i].update(throttles[i]);
+            int32_t current_ticks = mm[i].position;
+            int32_t delta = current_ticks - last_ticks[i];
+            positions[i] += delta;
+            last_ticks[i] = current_ticks;
+        }
+    }
+    
+    // Verify we actually moved up
+    for (int i=0; i<4; i++) TEST_ASSERT_GREATER_THAN(100, positions[i]);
+    
+    // 2. Wait state
+    btn.up = false;
+    logic.evaluate(btn, positions, throttles, fram_write_needed);
+    
+    // 3. SET + DOWN to zero positions
+    btn.set = true;
+    btn.down = false;
+    logic.evaluate(btn, positions, throttles, fram_write_needed); // Enter SET state
+    
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles, fram_write_needed); // Zero positions
+    
+    // Verify immediately zeroed
+    for (int i=0; i<4; i++) TEST_ASSERT_EQUAL(0, positions[i]);
+    
+    // 4. Run physics loop a few times and ensure it STAYS zeroed (the bug fix)
+    for (int loop = 0; loop < 10; loop++) {
+        logic.evaluate(btn, positions, throttles, fram_write_needed);
+        for (int i = 0; i < 4; i++) {
+            mm[i].update(throttles[i]);
+            int32_t current_ticks = mm[i].position;
+            int32_t delta = current_ticks - last_ticks[i];
+            positions[i] += delta;
+            last_ticks[i] = current_ticks;
+        }
+        
+        // It must remain exactly 0 despite the underlying MockMotor ticks still being > 100
+        for (int i=0; i<4; i++) TEST_ASSERT_EQUAL(0, positions[i]);
+    }
 }
 
 void setup() {
@@ -684,6 +753,11 @@ void setup() {
     RUN_TEST(test_full_lifecycle_with_physical_fram);
     RUN_TEST(test_simulated_physics_integration);
     RUN_TEST(test_simulated_stuck_motor_fault);
+    
+    // Test that will be added below
+    extern void test_simulated_physics_set_down_zeroes_positions(void);
+    RUN_TEST(test_simulated_physics_set_down_zeroes_positions);
+    
     UNITY_END();
 }
 

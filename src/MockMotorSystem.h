@@ -30,8 +30,7 @@ private:
     MockMotor mm[4];
 public:
     void init() override;
-    void updatePositions(int32_t currentPositions[4]) override;
-    void setPositions(const int32_t positions[4]) override;
+    void getTicks(int32_t ticks[4]) override;
     void setThrottles(const int16_t throttles[4]) override;
 };
 

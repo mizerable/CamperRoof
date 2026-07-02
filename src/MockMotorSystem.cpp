@@ -7,15 +7,9 @@ void MockMotorSystem::init() {
     mm[3].loadFactor = 0.95f; 
 }
 
-void MockMotorSystem::updatePositions(int32_t currentPositions[4]) {
+void MockMotorSystem::getTicks(int32_t ticks[4]) {
     for (int i = 0; i < 4; i++) {
-        currentPositions[i] = mm[i].position;
-    }
-}
-
-void MockMotorSystem::setPositions(const int32_t positions[4]) {
-    for (int i = 0; i < 4; i++) {
-        mm[i].position = positions[i];
+        ticks[i] = mm[i].position;
     }
 }
 

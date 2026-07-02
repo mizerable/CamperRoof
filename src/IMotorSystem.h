@@ -6,8 +6,11 @@
 class IMotorSystem {
 public:
     virtual void init() = 0;
-    virtual void updatePositions(int32_t currentPositions[4]) = 0;
-    virtual void setPositions(const int32_t positions[4]) = 0;
+
+    // Read the raw hardware/simulated tick counts (not absolute position)
+    virtual void getTicks(int32_t ticks[4]) = 0;
+
+    // Output throttles to the motors (-100 to 100)
     virtual void setThrottles(const int16_t throttles[4]) = 0;
     virtual ~IMotorSystem() = default;
 };

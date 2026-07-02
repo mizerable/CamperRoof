@@ -7,12 +7,8 @@ void HardwareMotorSystem::init() {
     setup_motors();
 }
 
-void HardwareMotorSystem::updatePositions(int32_t currentPositions[4]) {
-    update_pcnt_counts(currentPositions);
-}
-
-void HardwareMotorSystem::setPositions(const int32_t positions[4]) {
-    pcnt_set_counts(positions);
+void HardwareMotorSystem::getTicks(int32_t ticks[4]) {
+    update_pcnt_counts(ticks);
 }
 
 void HardwareMotorSystem::setThrottles(const int16_t throttles[4]) {
