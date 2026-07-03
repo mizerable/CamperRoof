@@ -627,6 +627,9 @@ void test_full_lifecycle_with_physical_fram(void) {
     
     // Also reset the global positions array
     for (int i=0; i<4; i++) positions[i] = 0;
+    
+    // Clear the "Initializing" screen immediately
+    update_test_display();
 
     // 3. User pushes UP, lifts to 25000 pulses
     btn.up = true;
@@ -635,6 +638,10 @@ void test_full_lifecycle_with_physical_fram(void) {
         positions[0] += 50; positions[1] += 50; positions[2] += 50; positions[3] += 50;
         // System writes to FRAM in the loop
         write_state_to_fram(positions, logic.getUpperLimit(), nullptr);
+        
+        // Update display every 50 loops so it doesn't look frozen
+        if (i % 50 == 0) update_test_display();
+        
         delay(2); // Prevent I2C bus flood and WDT crashes
     }
     update_test_display();
@@ -670,8 +677,12 @@ void test_full_lifecycle_with_physical_fram(void) {
         logic.evaluate(btn, positions, throttles);
         positions[0] -= 50; positions[1] -= 50; positions[2] -= 50; positions[3] -= 50;
         write_state_to_fram(positions, logic.getUpperLimit(), nullptr);
+        
+        if (i % 50 == 0) update_test_display();
+        
         delay(2); // Prevent I2C bus flood and WDT crashes
     }
+    update_test_display();
     
     // 5.5 USER RELEASES BUTTON (Triggers the final FRAM save of the 5000 positions!)
     btn.down = false;
