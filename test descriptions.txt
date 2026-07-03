@@ -53,6 +53,10 @@ manually jogging the roof into sync using the buttons on the cytrons. However si
 pulses you MUST make sure these pulses are still updating our position and those positions are stored to FRAM like usual
 even in FAULT mode.
 
+14. you MUST have a case where the motors have diverged by an amount that causes the FAULT state. then you must test that both lifting 
+and lowering produce no movement. and that also holding CLEAR button in combination with UP or DOWN also does not move the motors at all 
+while in FAULT state. 
+
 
 I expect dozens and dozens of tests. you MUST be extremely thorough with the sequences and combinations of user input and motor 
 behavior. You MUST also write unit tests that test the various modules and functions individually and in isolation, mocking 

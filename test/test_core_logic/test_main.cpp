@@ -693,6 +693,54 @@ void test_simulated_stuck_motor_fault(void) {
     TEST_ASSERT_TRUE(faulted);
 }
 
+void test_fault_state_blocks_all_movement(void) {
+    // 1. Force a massive divergence to trigger FAULT state
+    positions[0] = 0;
+    positions[1] = 1000;
+    positions[2] = 500;
+    positions[3] = 500;
+    
+    // Evaluate to enter FAULT
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles); // Transitions WAIT -> LIFTING
+    logic.evaluate(btn, positions, throttles); // Transitions LIFTING -> FAULT
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+    
+    // Helper lambda to check throttles are 0
+    auto assert_zero_throttles = [&]() {
+        for(int i=0; i<4; i++) TEST_ASSERT_EQUAL(0, throttles[i]);
+    };
+    
+    // 2. Try lifting
+    btn = {false, false, false, false};
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    assert_zero_throttles();
+    
+    // 3. Try lowering
+    btn = {false, false, false, false};
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    assert_zero_throttles();
+    
+    // 4. Try lifting with CLEAR override
+    btn = {false, false, false, false};
+    btn.up = true;
+    btn.clr = true;
+    logic.evaluate(btn, positions, throttles);
+    assert_zero_throttles();
+    
+    // 5. Try lowering with CLEAR override
+    btn = {false, false, false, false};
+    btn.down = true;
+    btn.clr = true;
+    logic.evaluate(btn, positions, throttles);
+    assert_zero_throttles();
+    
+    // 6. Ensure state remained FAULT the entire time
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+}
+
 void test_simulated_physics_set_down_zeroes_positions(void) {
     MockMotor mm[4];
     logic.setInitialState(positions, 20000);
@@ -783,7 +831,9 @@ void setup() {
     RUN_TEST(test_simulated_physics_integration);
     RUN_TEST(test_simulated_stuck_motor_fault);
     
-    // Test that will be added below
+    extern void test_fault_state_blocks_all_movement(void);
+    RUN_TEST(test_fault_state_blocks_all_movement);
+
     extern void test_simulated_physics_set_down_zeroes_positions(void);
     RUN_TEST(test_simulated_physics_set_down_zeroes_positions);
 
