@@ -40,6 +40,7 @@ const char* state_to_string(SystemState state) {
         case SystemState::STATE_LOWERING: return "LOWERING";
         case SystemState::STATE_FAULT: return "FAULT";
         case SystemState::STATE_SET: return "SET";
+        case SystemState::STATE_BOTTOMED: return "BOTTOMED";
         default: return "UNKNOWN";
     }
 }

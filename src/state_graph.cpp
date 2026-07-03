@@ -32,14 +32,21 @@ void StateGraph::buildGraph() {
         return ctx->hasDiverged(pos); 
     };
 
+    bottomedNode.stateId = SystemState::STATE_BOTTOMED;
+    bottomedNode.signature = { R, P, R, ANY };
+    bottomedNode.customCondition = [](CoreLogic* ctx, const ButtonState& btn, int32_t pos[4]) { 
+        return ctx->hasBottomedOut(); 
+    };
+
     // Wiring (Order dictates evaluation priority! FAULT checked first)
     waitNode.possibleNext = { &liftingNode, &loweringNode, &setNode };
     
     liftingNode.possibleNext = { &faultNode, &waitNode };
-    loweringNode.possibleNext = { &faultNode, &waitNode };
+    loweringNode.possibleNext = { &faultNode, &bottomedNode, &waitNode };
     
     setNode.possibleNext = { &waitNode };
     faultNode.possibleNext = { &waitNode };
+    bottomedNode.possibleNext = { &waitNode };
 
-    allNodes = { &waitNode, &liftingNode, &loweringNode, &setNode, &faultNode };
+    allNodes = { &waitNode, &liftingNode, &loweringNode, &setNode, &faultNode, &bottomedNode };
 }

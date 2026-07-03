@@ -29,19 +29,22 @@ public:
     );
 
     // Getters for current state
-    SystemState getCurrentState() const { return currentState; }
-    int32_t getUpperLimit() const { return upperLimit; }
+    SystemState getCurrentState() const;
+    int32_t getUpperLimit() const;
+    void getBottomedOutFlags(bool flagsOut[4]) const;
 
     // Setters for initialization from FRAM
-    void setInitialState(int32_t positions[4], int32_t limit);
+    void setInitialState(int32_t currentPositions[4], int32_t upperLimit, const bool bottomedOutFlags[4] = nullptr);
 
 
     // State Graph helper methods
     bool hasDiverged(int32_t currentPositions[4]) const;
     bool canEnterWait(int32_t currentPositions[4]) const;
+    bool hasBottomedOut() const;
+    void updateStallDetection(const ButtonState& btn, int32_t currentPositions[4]);
 
     // For unit testing only
-    void _forceStateForTesting(SystemState state) { currentState = state; }
+    void _forceStateForTesting(SystemState state);
 
 private:
     SystemState currentState;
@@ -49,6 +52,11 @@ private:
     int32_t upperLimit;
     int fault_clear_timer;
     bool faultClearedFlag;
+
+    // Bottom-Out Detection State
+    int32_t lastPositions[4];
+    int stallCounters[4];
+    bool is_bottomed_out[4];
 
     void apply_proportional_throttle(
         bool isLifting, 
@@ -59,10 +67,11 @@ private:
 
     // Isolated Action Handlers
     void executeWaitActions(int16_t throttles[4]);
-    void executeLiftingActions(bool overrideLimits, int32_t pos[4], int16_t throttles[4]);
-    void executeLoweringActions(bool overrideLimits, int32_t pos[4], int16_t throttles[4]);
-    void executeSetActions(const ButtonState& btn, int32_t pos[4], int16_t throttles[4]);
+    void executeLiftingActions(bool overrideLimits, int32_t currentPositions[4], int16_t throttles[4]);
+    void executeLoweringActions(bool overrideLimits, int32_t currentPositions[4], int16_t throttles[4]);
+    void executeSetActions(const ButtonState& btn, int32_t currentPositions[4], int16_t throttles[4]);
     void executeFaultActions(const ButtonState& btn, int16_t throttles[4]);
+    void executeBottomedActions(int16_t throttles[4]);
 };
 
 #endif // CORE_LOGIC_H

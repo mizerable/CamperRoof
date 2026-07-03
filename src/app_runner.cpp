@@ -18,6 +18,7 @@
 // --- GLOBALS ---
 static SharedState systemState;
 static SemaphoreHandle_t stateMutex;
+static SemaphoreHandle_t i2cMutex;
 static int32_t currentPositions[4] = {0, 0, 0, 0};
 static int32_t upperLimit = 0;
 static CoreLogic coreLogic;
@@ -88,7 +89,12 @@ static void MotorTask(void *pvParameters) {
     g_motorSystem->setThrottles(throttles);
 
     // 4. Persistence & UI Sync
-    write_state_to_fram(currentPositions, coreLogic.getUpperLimit());
+    bool bottomedFlags[4];
+    coreLogic.getBottomedOutFlags(bottomedFlags);
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        write_state_to_fram(currentPositions, coreLogic.getUpperLimit(), bottomedFlags);
+        xSemaphoreGive(i2cMutex);
+    }
 
     if (xSemaphoreTake(stateMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
       systemState.state = coreLogic.getCurrentState();
@@ -116,7 +122,10 @@ static void DisplayTask(void *pvParameters) {
       xSemaphoreGive(stateMutex);
 
       // Update physical screen
-      update_display(&localCopy);
+      if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+          update_display(&localCopy);
+          xSemaphoreGive(i2cMutex);
+      }
     }
 
     vTaskDelay(pdMS_TO_TICKS(100)); // 10Hz screen refresh
@@ -144,11 +153,12 @@ void AppRunner::start(IMotorSystem *motorSystem) {
   setup_storage();
   setup_display();
 
-  // Read saved state from FRAM
-  read_state_from_fram(currentPositions, &upperLimit);
+  // Load state from physical I2C FRAM
+  bool bottomedFlags[4];
+  read_state_from_fram(currentPositions, &upperLimit, bottomedFlags);
 
   // Initialize Shared State
-  coreLogic.setInitialState(currentPositions, upperLimit);
+  coreLogic.setInitialState(currentPositions, upperLimit, bottomedFlags);
   systemState.state = coreLogic.getCurrentState();
   systemState.upperLimit = coreLogic.getUpperLimit();
   for (int i = 0; i < 4; i++) {
@@ -157,6 +167,7 @@ void AppRunner::start(IMotorSystem *motorSystem) {
   }
 
   stateMutex = xSemaphoreCreateMutex();
+  i2cMutex = xSemaphoreCreateMutex();
 
   // Create Tasks
   xTaskCreatePinnedToCore(MotorTask, "MotorTask", 4096, NULL,

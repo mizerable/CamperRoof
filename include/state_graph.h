@@ -35,6 +35,7 @@ public:
     StateNode loweringNode;
     StateNode setNode;
     StateNode faultNode;
+    StateNode bottomedNode;
 
     std::vector<StateNode*> allNodes;
 

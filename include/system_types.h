@@ -17,7 +17,8 @@ enum class SystemState {
     STATE_LIFTING,
     STATE_LOWERING,
     STATE_FAULT,
-    STATE_SET
+    STATE_SET,
+    STATE_BOTTOMED
 };
 
 struct MotorData {
