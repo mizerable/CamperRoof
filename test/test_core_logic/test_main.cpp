@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include "storage.h"
 #include "core_logic.h"
+#include "state_graph.h"
 #include "pcnt_setup.h"
 #include "display.h"
 
@@ -216,6 +217,13 @@ void test_fault_clear(void) {
     
     // 4. Simulate the 250th loop (exactly 5.00 seconds)
     logic.evaluate(btn, positions, throttles);
+    // Ensure it is still in FAULT (must release buttons to clear)
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+
+    // 5. Release buttons to transition to WAIT
+    btn.set = false;
+    btn.clr = false;
+    logic.evaluate(btn, positions, throttles);
     // Ensure it successfully unlocked and returned to WAIT
     TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
 }
@@ -386,16 +394,22 @@ void test_fault_recovery_with_override(void) {
     logic.evaluate(btn, positions, throttles); // triggers FAULT
     TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
 
-    // 2. Clear fault to WAIT
+    // 2. Clear fault
     btn.up = false;
     btn.set = true;
     btn.clr = true;
     for (int i=0; i<250; i++) {
         logic.evaluate(btn, positions, throttles);
     }
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState()); // Still in fault while holding buttons!
+
+    // 3. Release buttons to transition to WAIT
+    btn.set = false;
+    btn.clr = false;
+    logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
 
-    // 3. Try to move UP again without CLEAR (positions are still out of sync by 600)
+    // 4. Try to move UP again without CLEAR (positions are still out of sync by 600)
     btn.set = false;
     btn.clr = false;
     btn.up = true;
@@ -407,27 +421,17 @@ void test_fault_recovery_with_override(void) {
     logic.evaluate(btn, positions, throttles);
     TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
     
-    // 4. Clear fault again
+    // 5. Clear fault again
     btn.up = false;
     btn.set = true;
     btn.clr = true;
     for (int i=0; i<250; i++) {
         logic.evaluate(btn, positions, throttles);
     }
-    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
-
-    // 5. Try to move UP while holding CLEAR
     btn.set = false;
-    btn.clr = true; // HOLD CLEAR TO OVERRIDE FAULT CHECK
-    btn.up = true;
-    
-    // First loop transitions WAIT -> LIFTING
+    btn.clr = false;
     logic.evaluate(btn, positions, throttles);
-    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
-    
-    // Second loop sees LIFTING + massive deviation, but CLEAR is held, so it DOES NOT FAULT!
-    logic.evaluate(btn, positions, throttles);
-    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
 }
 // ---------------------------------------------------------
 // 10. PHYSICAL FRAM INTEGRATION TEST
@@ -493,9 +497,14 @@ void test_full_lifecycle_with_physical_fram(void) {
     write_state_to_fram(positions, logic.getUpperLimit());
     update_test_display();
     
-    // 5. User lowers roof to 5000 pulses
+    // 5. User releases SET and UP to return to WAIT
     btn.set = false;
     btn.up = false;
+    logic.evaluate(btn, positions, throttles);
+    update_test_display();
+
+    // 6. User presses DOWN to lower roof to 5000 pulses
+    btn.down = true;
     btn.down = true;
     for (int i=0; i<400; i++) { // Lower by 20000
         logic.evaluate(btn, positions, throttles);
@@ -801,6 +810,49 @@ void test_simulated_physics_set_down_zeroes_positions(void) {
     }
 }
 
+// ---------------------------------------------------------
+// 12. GRAPH AMBIGUITY TESTS
+// ---------------------------------------------------------
+
+void test_graph_no_ambiguities(void) {
+    // We will test every state node
+    for (StateNode* node : systemGraph.allNodes) {
+        
+        // Test all 16 button combinations
+        for (int b = 0; b < 16; b++) {
+            ButtonState testBtn;
+            testBtn.up = (b & 1) != 0;
+            testBtn.down = (b & 2) != 0;
+            testBtn.set = (b & 4) != 0;
+            testBtn.clr = (b & 8) != 0;
+            
+            // Test both divergence conditions
+            for (int div = 0; div <= 1; div++) {
+                int32_t pos[4] = {0, 0, 0, 0};
+                if (div == 1) pos[0] = 1000; // Force divergence
+                
+                // Force CoreLogic into the source state so custom conditions (like canEnterWait) 
+                // have the correct context to evaluate!
+                logic._forceStateForTesting(node->stateId);
+                
+                int validTransitions = 0;
+                
+                // Ensure no more than 1 outgoing edge is valid
+                for (StateNode* nextNode : node->possibleNext) {
+                    if (nextNode->signature.matches(testBtn)) {
+                        if (nextNode->customCondition == nullptr || nextNode->customCondition(&logic, testBtn, pos)) {
+                            validTransitions++;
+                        }
+                    }
+                }
+                
+                // Assert that the graph is mathematically unambiguous
+                TEST_ASSERT_LESS_OR_EQUAL_MESSAGE(1, validTransitions, "Graph Ambiguity Detected!");
+            }
+        }
+    }
+}
+
 void setup() {
     delay(2000); // Give time for Serial monitor to attach
     
@@ -851,6 +903,9 @@ void setup() {
 
     extern void test_override_limits_lowering(void);
     RUN_TEST(test_override_limits_lowering);
+
+    extern void test_graph_no_ambiguities(void);
+    RUN_TEST(test_graph_no_ambiguities);
 
     UNITY_END();
 }

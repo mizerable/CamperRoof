@@ -10,6 +10,8 @@
 #define MAX_THROTTLE 80
 #define LOOP_PERIOD_MS 20 // 50Hz
 
+class StateNode; // Forward declaration
+
 class CoreLogic {
 public:
     CoreLogic();
@@ -34,10 +36,19 @@ public:
     void setInitialState(int32_t positions[4], int32_t limit);
 
 
+    // State Graph helper methods
+    bool hasDiverged(int32_t currentPositions[4]) const;
+    bool canEnterWait(int32_t currentPositions[4]) const;
+
+    // For unit testing only
+    void _forceStateForTesting(SystemState state) { currentState = state; }
+
 private:
     SystemState currentState;
+    StateNode* currentNode;
     int32_t upperLimit;
     int fault_clear_timer;
+    bool faultClearedFlag;
 
     void apply_proportional_throttle(
         bool isLifting, 
@@ -46,7 +57,12 @@ private:
         int16_t throttles[4]
     );
 
-
+    // Isolated Action Handlers
+    void executeWaitActions(int16_t throttles[4]);
+    void executeLiftingActions(bool overrideLimits, int32_t pos[4], int16_t throttles[4]);
+    void executeLoweringActions(bool overrideLimits, int32_t pos[4], int16_t throttles[4]);
+    void executeSetActions(const ButtonState& btn, int32_t pos[4], int16_t throttles[4]);
+    void executeFaultActions(const ButtonState& btn, int16_t throttles[4]);
 };
 
 #endif // CORE_LOGIC_H
