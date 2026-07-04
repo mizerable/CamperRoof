@@ -1026,6 +1026,7 @@ void test_graph_no_ambiguities(void) {
 }
 
 void setup() {
+    Serial.begin(115200);
     delay(2000); // Give time for Serial monitor to attach
     
     setup_pcnt(); // Initialize hardware PCNT so mock tests don't crash when setCount is called
@@ -1142,4 +1143,6 @@ void test_override_limits_lowering(void) {
 
 void loop() {
     // Empty, testing is finished.
+    // Add a small delay to feed the RTOS watchdog and prevent infinite resetting
+    delay(100);
 }
