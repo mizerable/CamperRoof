@@ -1,9 +1,9 @@
 #include "motor_control.h"
 
-// Cytron 1 uses Serial1 on TX pin 17
-// Cytron 2 uses Serial2 on TX pin 16
-#define CYTRON1_TX 17
-#define CYTRON2_TX 16
+// Cytron 1 uses Serial1 on TX pin TX (17)
+// Cytron 2 uses Serial2 on TX pin RX (16)
+#define CYTRON1_TX TX
+#define CYTRON2_TX RX
 
 void setup_motors() {
     // Initialize UART ports at 9600 baud for Cytron Simplified Serial mode

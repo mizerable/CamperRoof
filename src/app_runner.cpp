@@ -6,10 +6,10 @@
 #include <Wire.h>
 
 // --- PINS ---
-#define PIN_BTN_UP 13
-#define PIN_BTN_DOWN 14
-#define PIN_BTN_SET 27
-#define PIN_BTN_CLEAR 33
+#define PIN_BTN_UP A12
+#define PIN_BTN_DOWN A6
+#define PIN_BTN_SET A10
+#define PIN_BTN_CLEAR A9
 
 // --- CONSTANTS ---
 #define LOOP_PERIOD_MS 20     // 50Hz
