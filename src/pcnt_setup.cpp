@@ -3,10 +3,10 @@
 
 // Define pins for the 4 motors (Phase A and Phase B)
 const int PCNT_PINS[4][2] = {
-    {26, 25}, // Motor 1 (A0, A1)
-    {27, 33}, // Motor 2 (27, 33)
-    {15, 32}, // Motor 3 (15, 32)
-    {14, 12}  // Motor 4 (14, 12)
+    {A0, A1},     // Motor 1
+    {MOSI, MISO}, // Motor 2 (moved to avoid conflict with SET/CLEAR buttons)
+    {A8, A7},     // Motor 3
+    {TX, A11}     // Motor 4 (moved to avoid conflict with DOWN button)
 };
 
 ESP32Encoder encoders[4];
