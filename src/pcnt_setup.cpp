@@ -1,18 +1,18 @@
 #include "pcnt_setup.h"
+#include "pins.h"
 #include <ESP32Encoder.h>
 
-// Define pins for the 4 motors (Phase A and Phase B)
-const int PCNT_PINS[4][2] = {
-    {A2, A13},  // Motor 1 (34, 35)
-    {A4, A3},   // Motor 2 (36, 39)
-    {A5, MOSI}, // Motor 3 (4, 18)
-    {MISO, SDA} // Motor 4 (19, 23)
-};
-
-ESP32Encoder encoders[4];
+static ESP32Encoder encoders[4];
 
 void setup_pcnt() {
     ESP32Encoder::useInternalWeakPullResistors = UP;
+
+    const int PCNT_PINS[4][2] = {
+        {PIN_M1_PHASE_A, PIN_M1_PHASE_B},
+        {PIN_M2_PHASE_A, PIN_M2_PHASE_B},
+        {PIN_M3_PHASE_A, PIN_M3_PHASE_B},
+        {PIN_M4_PHASE_A, PIN_M4_PHASE_B}
+    };
     
     for (int i = 0; i < 4; i++) {
         encoders[i].setFilter(1023); // 1023 is max filter value for ESP32
@@ -21,12 +21,15 @@ void setup_pcnt() {
     }
 }
 
-void update_pcnt_counts(int32_t currentPositions[4]) {
+void get_and_clear_pcnt_deltas(int32_t deltas[4]) {
     static int32_t last_counts[4] = {0, 0, 0, 0};
     for (int i = 0; i < 4; i++) {
+        // ESP32Encoder internally handles the 64-bit rollover math safely
         int32_t current_count = (int32_t)encoders[i].getCount();
+        
         int32_t delta = current_count - last_counts[i];
         last_counts[i] = current_count;
-        currentPositions[i] += delta;
+        
+        deltas[i] = delta; 
     }
 }

@@ -7,9 +7,11 @@ void MockMotorSystem::init() {
     mm[3].loadFactor = 0.95f; 
 }
 
-void MockMotorSystem::getTicks(int32_t ticks[4]) {
+void MockMotorSystem::getDeltas(int32_t deltas[4]) {
+    static int32_t last_positions[4] = {0, 0, 0, 0};
     for (int i = 0; i < 4; i++) {
-        ticks[i] = mm[i].position;
+        deltas[i] = mm[i].position - last_positions[i];
+        last_positions[i] = mm[i].position;
     }
 }
 

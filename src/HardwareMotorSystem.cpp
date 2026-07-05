@@ -7,8 +7,8 @@ void HardwareMotorSystem::init() {
     setup_motors();
 }
 
-void HardwareMotorSystem::getTicks(int32_t ticks[4]) {
-    update_pcnt_counts(ticks);
+void HardwareMotorSystem::getDeltas(int32_t deltas[4]) {
+    get_and_clear_pcnt_deltas(deltas);
 }
 
 void HardwareMotorSystem::setThrottles(const int16_t throttles[4]) {

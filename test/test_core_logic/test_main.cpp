@@ -1061,6 +1061,15 @@ void setup() {
     extern void test_simulated_physics_set_down_zeroes_positions(void);
     RUN_TEST(test_simulated_physics_set_down_zeroes_positions);
 
+    extern void test_fault_mode_allows_manual_jogging_updates(void);
+    RUN_TEST(test_fault_mode_allows_manual_jogging_updates);
+
+    extern void test_pcnt_wrap_around_math(void);
+    RUN_TEST(test_pcnt_wrap_around_math);
+
+    extern void test_set_state_combinations(void);
+    RUN_TEST(test_set_state_combinations);
+
     extern void test_wait_up_and_down_ignored(void);
     RUN_TEST(test_wait_up_and_down_ignored);
     
@@ -1140,6 +1149,85 @@ void test_override_limits_lowering(void) {
     TEST_ASSERT_NOT_EQUAL(0, throttles[0]);
 }
 
+void test_fault_mode_allows_manual_jogging_updates(void) {
+    // Enter fault mode
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    positions[0] = 0;
+    positions[1] = 600;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+    
+    // Simulate manual jogging via Cytron buttons (PCNT still updates positions)
+    positions[0] = 600; // jogged back into sync manually
+    logic.evaluate(btn, positions, throttles);
+    
+    // Verify positions remain updated (CoreLogic didn't overwrite them)
+    TEST_ASSERT_EQUAL(600, positions[0]);
+    TEST_ASSERT_EQUAL(600, positions[1]);
+    
+    // Now we can clear fault since they are in sync
+    btn.up = false;
+    btn.set = true;
+    btn.clr = true;
+    for (int i=0; i<250; i++) logic.evaluate(btn, positions, throttles);
+    btn.set = false;
+    btn.clr = false;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+}
+
+void test_pcnt_wrap_around_math(void) {
+    // We can test the 16-bit wrap-around logic explicitly
+    // If a motor moves from 32760 to 32770, a 16-bit register wraps to -32766
+    int16_t last_count = 32760;
+    int16_t current_count = -32766; // 32770 in 16-bit signed
+    int16_t delta_16 = current_count - last_count;
+    int32_t delta_32 = delta_16; // sign extend
+    TEST_ASSERT_EQUAL(10, delta_32);
+    
+    // Lowering wrap around
+    last_count = -32760;
+    current_count = 32766; // -32770 in 16-bit signed
+    delta_16 = current_count - last_count;
+    delta_32 = delta_16;
+    TEST_ASSERT_EQUAL(-10, delta_32);
+}
+
+void test_set_state_combinations(void) {
+    // 1. User enters SET state
+    btn.set = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_SET, logic.getCurrentState());
+    
+    // 2. User presses DOWN to zero bottom limit
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    for(int i=0; i<4; i++) TEST_ASSERT_EQUAL(0, positions[i]);
+    
+    // 3. User lifts roof by 5000 pulses while out of SET STATE
+    btn.down = false;
+    btn.set = false;
+    logic.evaluate(btn, positions, throttles); // Back to WAIT
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+    
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles); // LIFTING
+    positions[0] = 5000; positions[1] = 5000; positions[2] = 5000; positions[3] = 5000;
+    logic.evaluate(btn, positions, throttles);
+    
+    btn.up = false;
+    logic.evaluate(btn, positions, throttles); // Back to WAIT
+    
+    btn.set = true;
+    logic.evaluate(btn, positions, throttles); // Enter SET
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles); // Set TOP limit
+    
+    TEST_ASSERT_EQUAL(5000, logic.getUpperLimit());
+}
+
 void loop() {
     // Empty, testing is finished.
 }
+

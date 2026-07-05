@@ -5,11 +5,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 
-// --- PINS ---
-#define PIN_BTN_UP A12
-#define PIN_BTN_DOWN A6
-#define PIN_BTN_SET A10
-#define PIN_BTN_CLEAR A9
+#include "pins.h"
 
 // --- CONSTANTS ---
 #define LOOP_PERIOD_MS 20     // 50Hz
@@ -59,25 +55,15 @@ static void MotorTask(void *pvParameters) {
   const TickType_t xFrequency = pdMS_TO_TICKS(LOOP_PERIOD_MS);
   xLastWakeTime = xTaskGetTickCount();
 
-  static int32_t last_ticks[4] = {0, 0, 0, 0};
-  bool first_loop = true;
-
   for (;;) {
     // 1. Read Inputs & Hardware/Mock Positions
     ButtonState btn = get_debounced_buttons();
     
-    int32_t current_ticks[4];
-    g_motorSystem->getTicks(current_ticks);
-
-    if (first_loop) {
-        for (int i = 0; i < 4; i++) last_ticks[i] = current_ticks[i];
-        first_loop = false;
-    }
+    int32_t deltas[4] = {0, 0, 0, 0};
+    g_motorSystem->getDeltas(deltas);
 
     for (int i = 0; i < 4; i++) {
-        int32_t delta = current_ticks[i] - last_ticks[i];
-        currentPositions[i] += delta;
-        last_ticks[i] = current_ticks[i];
+        currentPositions[i] += deltas[i];
     }
 
     // 2. Evaluate Core Logic
