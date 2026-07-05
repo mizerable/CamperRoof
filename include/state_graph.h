@@ -36,6 +36,10 @@ public:
     StateNode setNode;
     StateNode faultNode;
     StateNode bottomedNode;
+    StateNode motor1Node;
+    StateNode motor2Node;
+    StateNode motor3Node;
+    StateNode motor4Node;
 
     std::vector<StateNode*> allNodes;
 

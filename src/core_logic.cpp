@@ -8,6 +8,8 @@ CoreLogic::CoreLogic() {
     faultClearedFlag = false;
     fault_clear_timer = 0;
     upperLimit = 0;
+    stateBeforeMotorSelect = SystemState::STATE_WAIT;
+    last_motor_sel_state = false;
     for (int i=0; i<4; i++) {
         lastPositions[i] = 0;
         stallCounters[i] = 0;
@@ -157,20 +159,58 @@ void CoreLogic::evaluate(
     // 0. Real-time per-motor stall detection
     updateStallDetection(btn, currentPositions);
 
-    // 1. Evaluate Graph Transitions
-    for (StateNode* nextNode : currentNode->possibleNext) {
-        if (nextNode->signature.matches(btn)) {
-            if (nextNode->customCondition == nullptr || nextNode->customCondition(this, btn, currentPositions)) {
-                
-                // If we are leaving FAULT or entering WAIT, reset the fault flag
-                if (currentNode->stateId == SystemState::STATE_FAULT && nextNode->stateId != SystemState::STATE_FAULT) {
-                    faultClearedFlag = false;
-                    fault_clear_timer = 0;
-                }
+    // 1. Handle MOTOR_SELECT button edge
+    bool motor_sel_rising = btn.motor_sel && !last_motor_sel_state;
+    last_motor_sel_state = btn.motor_sel;
 
-                currentNode = nextNode;
-                currentState = currentNode->stateId;
-                break; 
+    if (motor_sel_rising) {
+        if (currentState == SystemState::STATE_WAIT || currentState == SystemState::STATE_FAULT) {
+            stateBeforeMotorSelect = currentState;
+            currentState = SystemState::STATE_MOTOR1;
+            currentNode = &systemGraph.motor1Node;
+        }
+        else if (currentState == SystemState::STATE_MOTOR1) {
+            currentState = SystemState::STATE_MOTOR2;
+            currentNode = &systemGraph.motor2Node;
+        }
+        else if (currentState == SystemState::STATE_MOTOR2) {
+            currentState = SystemState::STATE_MOTOR3;
+            currentNode = &systemGraph.motor3Node;
+        }
+        else if (currentState == SystemState::STATE_MOTOR3) {
+            currentState = SystemState::STATE_MOTOR4;
+            currentNode = &systemGraph.motor4Node;
+        }
+        else if (currentState == SystemState::STATE_MOTOR4) {
+            currentState = stateBeforeMotorSelect;
+            if (stateBeforeMotorSelect == SystemState::STATE_WAIT) {
+                currentNode = &systemGraph.waitNode;
+            } else {
+                currentNode = &systemGraph.faultNode;
+            }
+        }
+    }
+
+    // 2. Evaluate Graph Transitions (skip if in manual motor jog state)
+    if (currentState != SystemState::STATE_MOTOR1 && 
+        currentState != SystemState::STATE_MOTOR2 && 
+        currentState != SystemState::STATE_MOTOR3 && 
+        currentState != SystemState::STATE_MOTOR4) {
+        
+        for (StateNode* nextNode : currentNode->possibleNext) {
+            if (nextNode->signature.matches(btn)) {
+                if (nextNode->customCondition == nullptr || nextNode->customCondition(this, btn, currentPositions)) {
+                    
+                    // If we are leaving FAULT or entering WAIT, reset the fault flag
+                    if (currentNode->stateId == SystemState::STATE_FAULT && nextNode->stateId != SystemState::STATE_FAULT) {
+                        faultClearedFlag = false;
+                        fault_clear_timer = 0;
+                    }
+
+                    currentNode = nextNode;
+                    currentState = currentNode->stateId;
+                    break; 
+                }
             }
         }
     }
@@ -195,6 +235,32 @@ void CoreLogic::evaluate(
         case SystemState::STATE_BOTTOMED:
             executeBottomedActions(throttles);
             break;
+        case SystemState::STATE_MOTOR1:
+            executeMotorJogActions(0, btn, currentPositions, throttles);
+            break;
+        case SystemState::STATE_MOTOR2:
+            executeMotorJogActions(1, btn, currentPositions, throttles);
+            break;
+        case SystemState::STATE_MOTOR3:
+            executeMotorJogActions(2, btn, currentPositions, throttles);
+            break;
+        case SystemState::STATE_MOTOR4:
+            executeMotorJogActions(3, btn, currentPositions, throttles);
+            break;
+    }
+}
+
+void CoreLogic::executeMotorJogActions(int motorIdx, const ButtonState& btn, int32_t pos[4], int16_t throttles[4]) {
+    for (int i=0; i<4; i++) throttles[i] = 0;
+
+    if (btn.up && !btn.down) {
+        if (btn.clr || pos[motorIdx] < upperLimit) {
+            throttles[motorIdx] = 5;
+        }
+    } else if (btn.down && !btn.up) {
+        if (btn.clr || pos[motorIdx] > 0) {
+            throttles[motorIdx] = -5;
+        }
     }
 }
 

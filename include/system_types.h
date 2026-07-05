@@ -9,6 +9,7 @@ struct ButtonState {
     bool down;
     bool set;
     bool clr;
+    bool motor_sel;
 };
 
 // State Machine States
@@ -18,7 +19,11 @@ enum class SystemState {
     STATE_LOWERING,
     STATE_FAULT,
     STATE_SET,
-    STATE_BOTTOMED
+    STATE_BOTTOMED,
+    STATE_MOTOR1,
+    STATE_MOTOR2,
+    STATE_MOTOR3,
+    STATE_MOTOR4
 };
 
 struct MotorData {

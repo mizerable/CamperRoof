@@ -15,7 +15,7 @@ public:
         if (isStuck) return;
         
         // Simulating physical friction: if throttle is too low, it won't move at all
-        if (abs(throttle) < 15) return; 
+        if (abs(throttle) < 4) return; 
 
         // Non-linear response curve: throttle^nonLinearity * loadFactor
         float efficiency = 1.0f;

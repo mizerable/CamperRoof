@@ -61,3 +61,5 @@ while in FAULT state.
 I expect dozens and dozens of tests. you MUST be extremely thorough with the sequences and combinations of user input and motor 
 behavior. You MUST also write unit tests that test the various modules and functions individually and in isolation, mocking 
 any external dependencies as needed. 
+
+15. you MUST make sure the display displays as expected in ALL unit and integration tests. Specifically, when adding new SystemStates, you must ensure they are properly mapped to strings in `display.cpp` (e.g. `state_to_string()`) so that the screen never displays "UNKNOWN".

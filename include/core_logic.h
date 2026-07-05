@@ -52,6 +52,8 @@ private:
     int32_t upperLimit;
     int fault_clear_timer;
     bool faultClearedFlag;
+    SystemState stateBeforeMotorSelect;
+    bool last_motor_sel_state;
 
     // Bottom-Out Detection State
     int32_t lastPositions[4];
@@ -72,6 +74,7 @@ private:
     void executeSetActions(const ButtonState& btn, int32_t currentPositions[4], int16_t throttles[4]);
     void executeFaultActions(const ButtonState& btn, int16_t throttles[4]);
     void executeBottomedActions(int16_t throttles[4]);
+    void executeMotorJogActions(int motorIdx, const ButtonState& btn, int32_t currentPositions[4], int16_t throttles[4]);
 };
 
 #endif // CORE_LOGIC_H

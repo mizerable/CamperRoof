@@ -38,6 +38,11 @@ void StateGraph::buildGraph() {
         return ctx->hasBottomedOut(); 
     };
 
+    motor1Node.stateId = SystemState::STATE_MOTOR1;
+    motor2Node.stateId = SystemState::STATE_MOTOR2;
+    motor3Node.stateId = SystemState::STATE_MOTOR3;
+    motor4Node.stateId = SystemState::STATE_MOTOR4;
+
     // Wiring (Order dictates evaluation priority! FAULT checked first)
     waitNode.possibleNext = { &liftingNode, &loweringNode, &setNode };
     
@@ -48,5 +53,5 @@ void StateGraph::buildGraph() {
     faultNode.possibleNext = { &waitNode };
     bottomedNode.possibleNext = { &waitNode };
 
-    allNodes = { &waitNode, &liftingNode, &loweringNode, &setNode, &faultNode, &bottomedNode };
+    allNodes = { &waitNode, &liftingNode, &loweringNode, &setNode, &faultNode, &bottomedNode, &motor1Node, &motor2Node, &motor3Node, &motor4Node };
 }

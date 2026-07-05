@@ -41,6 +41,10 @@ const char* state_to_string(SystemState state) {
         case SystemState::STATE_FAULT: return "FAULT";
         case SystemState::STATE_SET: return "SET";
         case SystemState::STATE_BOTTOMED: return "BOTTOMED";
+        case SystemState::STATE_MOTOR1: return "JOG_M1";
+        case SystemState::STATE_MOTOR2: return "JOG_M2";
+        case SystemState::STATE_MOTOR3: return "JOG_M3";
+        case SystemState::STATE_MOTOR4: return "JOG_M4";
         default: return "UNKNOWN";
     }
 }

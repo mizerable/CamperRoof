@@ -31,11 +31,13 @@ static ButtonState get_debounced_buttons() {
   current_read.down = (digitalRead(PIN_BTN_DOWN) == LOW);
   current_read.set = (digitalRead(PIN_BTN_SET) == LOW);
   current_read.clr = (digitalRead(PIN_BTN_CLEAR) == LOW);
+  current_read.motor_sel = (digitalRead(PIN_BTN_MOTOR_SELECT) == LOW);
 
   if (current_read.up == last_read_state.up &&
       current_read.down == last_read_state.down &&
       current_read.set == last_read_state.set &&
-      current_read.clr == last_read_state.clr) {
+      current_read.clr == last_read_state.clr &&
+      current_read.motor_sel == last_read_state.motor_sel) {
     stable_count++;
     if (stable_count >= DEBOUNCE_ITERATIONS) {
       stable_state = current_read;
@@ -131,6 +133,7 @@ void AppRunner::start(IMotorSystem *motorSystem) {
   pinMode(PIN_BTN_DOWN, INPUT_PULLUP);
   pinMode(PIN_BTN_SET, INPUT_PULLUP);
   pinMode(PIN_BTN_CLEAR, INPUT_PULLUP);
+  pinMode(PIN_BTN_MOTOR_SELECT, INPUT_PULLUP);
 
   // Initialize Motor Subsystem (Hardware or Mock)
   g_motorSystem->init();

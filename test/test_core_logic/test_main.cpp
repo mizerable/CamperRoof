@@ -1096,6 +1096,20 @@ void setup() {
     
     extern void test_graph_no_ambiguities(void);
     RUN_TEST(test_graph_no_ambiguities);
+    extern void test_motor_select_cycles_from_wait(void);
+    RUN_TEST(test_motor_select_cycles_from_wait);
+    
+    extern void test_motor_select_cycles_from_fault(void);
+    RUN_TEST(test_motor_select_cycles_from_fault);
+    
+    extern void test_motor_jog_applies_throttle(void);
+    RUN_TEST(test_motor_jog_applies_throttle);
+    
+    extern void test_motor_jog_respects_limits(void);
+    RUN_TEST(test_motor_jog_respects_limits);
+    
+    extern void test_motor_jog_overrides_limits_with_clear(void);
+    RUN_TEST(test_motor_jog_overrides_limits_with_clear);
 
     UNITY_END();
 }
@@ -1226,8 +1240,131 @@ void test_set_state_combinations(void) {
     
     TEST_ASSERT_EQUAL(5000, logic.getUpperLimit());
 }
+void test_motor_select_cycles_from_wait(void) {
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+    
+    // Press MOTOR_SELECT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR1, logic.getCurrentState());
+    
+    // Release MOTOR_SELECT
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    // Press MOTOR_SELECT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR2, logic.getCurrentState());
+    
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR3, logic.getCurrentState());
+    
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR4, logic.getCurrentState());
+    
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    // Final press returns to WAIT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+}
+
+void test_motor_select_cycles_from_fault(void) {
+    logic._forceStateForTesting(SystemState::STATE_FAULT);
+    
+    // Press MOTOR_SELECT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR1, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR2, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR3, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR4, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    // Final press returns to FAULT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+}
+
+void test_motor_jog_applies_throttle(void) {
+    logic._forceStateForTesting(SystemState::STATE_MOTOR2);
+    
+    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    
+    TEST_ASSERT_EQUAL(0, throttles[0]);
+    TEST_ASSERT_EQUAL(5, throttles[1]); // Only motor 2 gets 5% UP
+    TEST_ASSERT_EQUAL(0, throttles[2]);
+    TEST_ASSERT_EQUAL(0, throttles[3]);
+    
+    btn.up = false;
+    btn.down = true;
+    positions[1] = 5000; // Above 0 so we can lower
+    logic.evaluate(btn, positions, throttles);
+    
+    TEST_ASSERT_EQUAL(0, throttles[0]);
+    TEST_ASSERT_EQUAL(-5, throttles[1]); // Only motor 2 gets -5% DOWN
+    TEST_ASSERT_EQUAL(0, throttles[2]);
+    TEST_ASSERT_EQUAL(0, throttles[3]);
+    btn.down = false;
+}
+
+void test_motor_jog_respects_limits(void) {
+    logic._forceStateForTesting(SystemState::STATE_MOTOR3);
+    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    
+    // Try to lift when at upper limit
+    positions[2] = 10000;
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[2]); // Respects upper limit
+    
+    // Try to lower when at bottom
+    positions[2] = 0;
+    btn.up = false;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[2]); // Respects lower limit
+    btn.down = false;
+}
+
+void test_motor_jog_overrides_limits_with_clear(void) {
+    logic._forceStateForTesting(SystemState::STATE_MOTOR4);
+    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    
+    // Try to lift when at upper limit, BUT hold CLEAR
+    positions[3] = 10000;
+    btn.up = true;
+    btn.clr = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(5, throttles[3]); // Overrides upper limit
+    
+    // Try to lower when at bottom, BUT hold CLEAR
+    positions[3] = 0;
+    btn.up = false;
+    btn.down = true;
+    btn.clr = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(-5, throttles[3]); // Overrides lower limit
+    
+    btn.down = false;
+    btn.clr = false;
+}
 
 void loop() {
     // Empty, testing is finished.
 }
-
