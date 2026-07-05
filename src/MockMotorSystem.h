@@ -30,7 +30,7 @@ private:
     MockMotor mm[4];
 public:
     void init() override;
-    void getTicks(int32_t ticks[4]) override;
+    void getDeltas(int32_t deltas[4]) override;
     void setThrottles(const int16_t throttles[4]) override;
 };
 

@@ -7,8 +7,8 @@ class IMotorSystem {
 public:
     virtual void init() = 0;
 
-    // Read the raw hardware/simulated tick counts (not absolute position)
-    virtual void getTicks(int32_t ticks[4]) = 0;
+    // Read the incremental change since last call
+    virtual void getDeltas(int32_t deltas[4]) = 0;
 
     // Output throttles to the motors (-100 to 100)
     virtual void setThrottles(const int16_t throttles[4]) = 0;
