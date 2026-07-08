@@ -4,6 +4,7 @@
 #include "storage.h"
 #include <Arduino.h>
 #include <Wire.h>
+#include "ble_controller.h"
 
 #include "pins.h"
 
@@ -60,6 +61,14 @@ static void MotorTask(void *pvParameters) {
   for (;;) {
     // 1. Read Inputs & Hardware/Mock Positions
     ButtonState btn = get_debounced_buttons();
+    ButtonState ble_btn = BLEController::get_ble_buttons();
+    
+    // Logically OR the physical and BLE buttons
+    btn.up = btn.up || ble_btn.up;
+    btn.down = btn.down || ble_btn.down;
+    btn.set = btn.set || ble_btn.set;
+    btn.clr = btn.clr || ble_btn.clr;
+    btn.motor_sel = btn.motor_sel || ble_btn.motor_sel;
     
     int32_t deltas[4] = {0, 0, 0, 0};
     g_motorSystem->getDeltas(deltas);
@@ -137,6 +146,9 @@ void AppRunner::start(IMotorSystem *motorSystem) {
 
   // Initialize Motor Subsystem (Hardware or Mock)
   g_motorSystem->init();
+
+  // Initialize BLE Controller
+  BLEController::init();
 
   // Initialize Other Subsystems
   setup_storage();

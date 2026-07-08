@@ -1110,9 +1110,64 @@ void setup() {
     
     extern void test_motor_jog_overrides_limits_with_clear(void);
     RUN_TEST(test_motor_jog_overrides_limits_with_clear);
+    extern void test_ble_button_simulation(void);
+    RUN_TEST(test_ble_button_simulation);
 
     UNITY_END();
 }
+
+#include "ble_controller.h"
+
+// ---------------------------------------------------------
+// 12. BLUETOOTH BUTTON INTEGRATION TESTS
+// ---------------------------------------------------------
+void test_ble_button_simulation(void) {
+    // Reset BLE controller state (Release all)
+    BLEController::simulate_ble_rx("!B50!B60!B10!B30!B20");
+    
+    ButtonState ble = BLEController::get_ble_buttons();
+    TEST_ASSERT_FALSE(ble.up);
+    TEST_ASSERT_FALSE(ble.down);
+    TEST_ASSERT_FALSE(ble.set);
+    TEST_ASSERT_FALSE(ble.clr);
+    TEST_ASSERT_FALSE(ble.motor_sel);
+
+    // Simulate pressing UP and SET via Bluetooth
+    BLEController::simulate_ble_rx("!B51!B11");
+    
+    ble = BLEController::get_ble_buttons();
+    TEST_ASSERT_TRUE(ble.up);
+    TEST_ASSERT_FALSE(ble.down);
+    TEST_ASSERT_TRUE(ble.set);
+    TEST_ASSERT_FALSE(ble.clr);
+    TEST_ASSERT_FALSE(ble.motor_sel);
+
+    // Physical buttons not pressed
+    btn = {false, false, false, false, false};
+    btn.up = btn.up || ble.up;
+    btn.down = btn.down || ble.down;
+    btn.set = btn.set || ble.set;
+    btn.clr = btn.clr || ble.clr;
+    btn.motor_sel = btn.motor_sel || ble.motor_sel;
+
+    logic.evaluate(btn, positions, throttles);
+    // UP+SET is invalid, stays in WAIT
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+
+    // Release SET
+    BLEController::simulate_ble_rx("!B10");
+    ble = BLEController::get_ble_buttons();
+    btn = {false, false, false, false, false};
+    btn.up = btn.up || ble.up;
+    btn.down = btn.down || ble.down;
+    btn.set = btn.set || ble.set;
+    btn.clr = btn.clr || ble.clr;
+    btn.motor_sel = btn.motor_sel || ble.motor_sel;
+    
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
+}
+
 
 void test_wait_up_and_down_ignored(void) {
     btn.up = true;
