@@ -26,7 +26,7 @@ bool setup_storage() {
   }
 
   uint16_t magic = 0;
-  fram.read(FRAM_ADDR_MAGIC, (uint8_t *)&magic, sizeof(magic));
+  fram.read(FRAM_ADDR_MAGIC, reinterpret_cast<uint8_t *>(&magic), sizeof(magic));
 
     if (magic != MAGIC_VALUE) {
     // First boot or uninitialized memory, set all to 0
@@ -34,27 +34,27 @@ bool setup_storage() {
     bool false_flags[4] = {false, false, false, false};
     write_state_to_fram(zeros, 0, false_flags);
     magic = MAGIC_VALUE;
-    fram.write(FRAM_ADDR_MAGIC, (uint8_t *)&magic, sizeof(magic));
+    fram.write(FRAM_ADDR_MAGIC, reinterpret_cast<uint8_t *>(&magic), sizeof(magic));
   }
 
   return true;
 }
 
 void read_state_from_fram(int32_t currentPositions[4], int32_t *upperLimit, bool bottomedOutFlags[4]) {
-  fram.read(FRAM_ADDR_POSITIONS, (uint8_t *)currentPositions,
+  fram.read(FRAM_ADDR_POSITIONS, reinterpret_cast<uint8_t *>(currentPositions),
             sizeof(int32_t) * 4);
-  fram.read(FRAM_ADDR_LIMIT, (uint8_t *)upperLimit, sizeof(int32_t));
+  fram.read(FRAM_ADDR_LIMIT, reinterpret_cast<uint8_t *>(upperLimit), sizeof(int32_t));
   if (bottomedOutFlags != nullptr) {
-      fram.read(FRAM_ADDR_BOTTOMED, (uint8_t *)bottomedOutFlags, sizeof(bool) * 4);
+      fram.read(FRAM_ADDR_BOTTOMED, reinterpret_cast<uint8_t *>(bottomedOutFlags), sizeof(bool) * 4);
   }
 }
 
 void write_state_to_fram(const int32_t currentPositions[4],
                          int32_t upperLimit, const bool bottomedOutFlags[4]) {
-  fram.write(FRAM_ADDR_POSITIONS, (uint8_t *)currentPositions,
+  fram.write(FRAM_ADDR_POSITIONS, const_cast<uint8_t*>(reinterpret_cast<const uint8_t *>(currentPositions)),
              sizeof(int32_t) * 4);
-  fram.write(FRAM_ADDR_LIMIT, (uint8_t *)&upperLimit, sizeof(int32_t));
+  fram.write(FRAM_ADDR_LIMIT, const_cast<uint8_t*>(reinterpret_cast<const uint8_t *>(&upperLimit)), sizeof(int32_t));
   if (bottomedOutFlags != nullptr) {
-      fram.write(FRAM_ADDR_BOTTOMED, (uint8_t *)bottomedOutFlags, sizeof(bool) * 4);
+      fram.write(FRAM_ADDR_BOTTOMED, const_cast<uint8_t*>(reinterpret_cast<const uint8_t *>(bottomedOutFlags)), sizeof(bool) * 4);
   }
 }

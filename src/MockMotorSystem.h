@@ -1,5 +1,4 @@
-#ifndef MOCK_MOTOR_SYSTEM_H
-#define MOCK_MOTOR_SYSTEM_H
+#pragma once
 
 #include "IMotorSystem.h"
 #include <Arduino.h>
@@ -34,4 +33,3 @@ public:
     void setThrottles(const int16_t throttles[4]) override;
 };
 
-#endif // MOCK_MOTOR_SYSTEM_H

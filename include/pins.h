@@ -1,5 +1,4 @@
-#ifndef PINS_H
-#define PINS_H
+#pragma once
 
 #include <Arduino.h>
 
@@ -31,11 +30,10 @@
 #define PIN_M3_PHASE_B MOSI
 
 #define PIN_M4_PHASE_A MISO
-#define PIN_M4_PHASE_B SDA
+#define PIN_M4_PHASE_B A1
 
 // --- I2C BUS (DISPLAY & FRAM) ---
 // Uses default SDA and SCL for the board unless overridden here
 #define PIN_I2C_SDA SDA
 #define PIN_I2C_SCL SCL
 
-#endif // PINS_H

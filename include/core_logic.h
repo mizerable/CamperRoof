@@ -1,5 +1,4 @@
-#ifndef CORE_LOGIC_H
-#define CORE_LOGIC_H
+#pragma once
 
 #include "system_types.h"
 
@@ -77,4 +76,3 @@ private:
     void executeMotorJogActions(int motorIdx, const ButtonState& btn, int32_t currentPositions[4], int16_t throttles[4]);
 };
 
-#endif // CORE_LOGIC_H

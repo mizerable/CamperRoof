@@ -1,5 +1,4 @@
-#ifndef SYSTEM_TYPES_H
-#define SYSTEM_TYPES_H
+#pragma once
 
 #include <stdint.h>
 
@@ -39,4 +38,3 @@ struct SharedState {
     ButtonState buttons;
 };
 
-#endif // SYSTEM_TYPES_H

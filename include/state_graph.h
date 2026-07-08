@@ -1,5 +1,4 @@
-#ifndef STATE_GRAPH_H
-#define STATE_GRAPH_H
+#pragma once
 
 #include <vector>
 #include "system_types.h"
@@ -49,4 +48,3 @@ public:
 
 extern StateGraph systemGraph;
 
-#endif // STATE_GRAPH_H

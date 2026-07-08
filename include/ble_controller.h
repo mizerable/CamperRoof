@@ -1,5 +1,4 @@
-#ifndef BLE_CONTROLLER_H
-#define BLE_CONTROLLER_H
+#pragma once
 
 #include <Arduino.h>
 #include "system_types.h"
@@ -12,4 +11,3 @@ public:
     static void simulate_ble_rx(const char* data);
 };
 
-#endif // BLE_CONTROLLER_H

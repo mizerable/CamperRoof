@@ -1,5 +1,4 @@
-#ifndef PCNT_SETUP_H
-#define PCNT_SETUP_H
+#pragma once
 
 #include <Arduino.h>
 
@@ -10,4 +9,3 @@ void setup_pcnt();
 // This is completely stateless and relies on hardware quadrature decoding.
 void get_and_clear_pcnt_deltas(int32_t deltas[4]);
 
-#endif // PCNT_SETUP_H
