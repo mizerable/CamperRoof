@@ -1,5 +1,4 @@
-#ifndef PINS_H
-#define PINS_H
+#pragma once
 
 #include <Arduino.h>
 
@@ -12,6 +11,7 @@
 #define PIN_BTN_DOWN  A6
 #define PIN_BTN_SET   A10
 #define PIN_BTN_CLEAR A9
+#define PIN_BTN_MOTOR_SELECT A2
 
 // --- CYTRON MOTOR CONTROLLERS (SIMPLIFIED SERIAL) ---
 // Note: We only need TX pins to send commands to the Cytrons.
@@ -37,4 +37,3 @@
 #define PIN_I2C_SDA SDA
 #define PIN_I2C_SCL SCL
 
-#endif // PINS_H

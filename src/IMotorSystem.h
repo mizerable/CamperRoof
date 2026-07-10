@@ -1,5 +1,4 @@
-#ifndef IMOTOR_SYSTEM_H
-#define IMOTOR_SYSTEM_H
+#pragma once
 
 #include <stdint.h>
 
@@ -15,4 +14,3 @@ public:
     virtual ~IMotorSystem() = default;
 };
 
-#endif // IMOTOR_SYSTEM_H

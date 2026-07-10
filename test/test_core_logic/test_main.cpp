@@ -990,36 +990,49 @@ void test_graph_no_ambiguities(void) {
     // We will test every state node
     for (StateNode* node : systemGraph.allNodes) {
         
-        // Test all 16 button combinations
-        for (int b = 0; b < 16; b++) {
+        // Test all 32 button combinations (including motor_sel)
+        for (int b = 0; b < 32; b++) {
             ButtonState testBtn;
             testBtn.up = (b & 1) != 0;
             testBtn.down = (b & 2) != 0;
             testBtn.set = (b & 4) != 0;
             testBtn.clr = (b & 8) != 0;
+            testBtn.motor_sel = (b & 16) != 0;
             
             // Test both divergence conditions
             for (int div = 0; div <= 1; div++) {
-                int32_t pos[4] = {0, 0, 0, 0};
-                if (div == 1) pos[0] = 1000; // Force divergence
-                
-                // Force CoreLogic into the source state so custom conditions (like canEnterWait) 
-                // have the correct context to evaluate!
-                logic._forceStateForTesting(node->stateId);
-                
-                int validTransitions = 0;
-                
-                // Ensure no more than 1 outgoing edge is valid
-                for (StateNode* nextNode : node->possibleNext) {
-                    if (nextNode->signature.matches(testBtn)) {
-                        if (nextNode->customCondition == nullptr || nextNode->customCondition(&logic, testBtn, pos)) {
-                            validTransitions++;
+                // Test both edge cases for motor_sel
+                for (int edge = 0; edge <= 1; edge++) {
+                    int32_t pos[4] = {0, 0, 0, 0};
+                    if (div == 1) pos[0] = 1000; // Force divergence
+                    
+                    // Force CoreLogic into the source state
+                    logic._forceStateForTesting(node->stateId);
+                    
+                    // Setup edge detector state
+                    ButtonState prevBtn = testBtn;
+                    if (edge == 1) { // Force a rising edge context if testBtn.motor_sel is true
+                        prevBtn.motor_sel = false;
+                    } else { // No rising edge
+                        prevBtn.motor_sel = testBtn.motor_sel; 
+                    }
+                    logic.evaluateMotorSelEdge(prevBtn);
+                    logic.evaluateMotorSelEdge(testBtn);
+                    
+                    int validTransitions = 0;
+                    
+                    // Ensure no more than 1 outgoing edge is valid
+                    for (const Transition& t : node->transitions) {
+                        if (t.signature.matches(testBtn)) {
+                            if (t.customCondition == nullptr || t.customCondition(&logic, testBtn, pos)) {
+                                validTransitions++;
+                            }
                         }
                     }
+                    
+                    // Assert that the graph is mathematically unambiguous
+                    TEST_ASSERT_LESS_OR_EQUAL_MESSAGE(1, validTransitions, "Graph Ambiguity Detected!");
                 }
-                
-                // Assert that the graph is mathematically unambiguous
-                TEST_ASSERT_LESS_OR_EQUAL_MESSAGE(1, validTransitions, "Graph Ambiguity Detected!");
             }
         }
     }
@@ -1097,9 +1110,82 @@ void setup() {
     
     extern void test_graph_no_ambiguities(void);
     RUN_TEST(test_graph_no_ambiguities);
+    extern void test_motor_select_cycles_from_wait(void);
+    RUN_TEST(test_motor_select_cycles_from_wait);
+    
+    extern void test_motor_select_cycles_from_fault(void);
+    RUN_TEST(test_motor_select_cycles_from_fault);
+    
+    extern void test_motor_jog_applies_throttle(void);
+    RUN_TEST(test_motor_jog_applies_throttle);
+    
+    extern void test_motor_jog_respects_limits(void);
+    RUN_TEST(test_motor_jog_respects_limits);
+    
+    extern void test_motor_jog_overrides_limits_with_clear(void);
+    RUN_TEST(test_motor_jog_overrides_limits_with_clear);
+    
+    extern void test_motor_jog_prevents_worsening_rack(void);
+    RUN_TEST(test_motor_jog_prevents_worsening_rack);
+    
+    extern void test_ble_button_simulation(void);
+    RUN_TEST(test_ble_button_simulation);
 
     UNITY_END();
 }
+
+#include "ble_controller.h"
+
+// ---------------------------------------------------------
+// 12. BLUETOOTH BUTTON INTEGRATION TESTS
+// ---------------------------------------------------------
+void test_ble_button_simulation(void) {
+    // Reset BLE controller state (Release all)
+    BLEController::simulate_ble_rx("!B50!B60!B10!B30!B20");
+    
+    ButtonState ble = BLEController::get_ble_buttons();
+    TEST_ASSERT_FALSE(ble.up);
+    TEST_ASSERT_FALSE(ble.down);
+    TEST_ASSERT_FALSE(ble.set);
+    TEST_ASSERT_FALSE(ble.clr);
+    TEST_ASSERT_FALSE(ble.motor_sel);
+
+    // Simulate pressing UP and SET via Bluetooth
+    BLEController::simulate_ble_rx("!B51!B11");
+    
+    ble = BLEController::get_ble_buttons();
+    TEST_ASSERT_TRUE(ble.up);
+    TEST_ASSERT_FALSE(ble.down);
+    TEST_ASSERT_TRUE(ble.set);
+    TEST_ASSERT_FALSE(ble.clr);
+    TEST_ASSERT_FALSE(ble.motor_sel);
+
+    // Physical buttons not pressed
+    btn = {false, false, false, false, false};
+    btn.up = btn.up || ble.up;
+    btn.down = btn.down || ble.down;
+    btn.set = btn.set || ble.set;
+    btn.clr = btn.clr || ble.clr;
+    btn.motor_sel = btn.motor_sel || ble.motor_sel;
+
+    logic.evaluate(btn, positions, throttles);
+    // UP+SET is invalid, stays in WAIT
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+
+    // Release SET
+    BLEController::simulate_ble_rx("!B10");
+    ble = BLEController::get_ble_buttons();
+    btn = {false, false, false, false, false};
+    btn.up = btn.up || ble.up;
+    btn.down = btn.down || ble.down;
+    btn.set = btn.set || ble.set;
+    btn.clr = btn.clr || ble.clr;
+    btn.motor_sel = btn.motor_sel || ble.motor_sel;
+    
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
+}
+
 
 void test_wait_up_and_down_ignored(void) {
     btn.up = true;
@@ -1227,10 +1313,190 @@ void test_set_state_combinations(void) {
     
     TEST_ASSERT_EQUAL(5000, logic.getUpperLimit());
 }
+void test_motor_select_cycles_from_wait(void) {
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+    
+    // Press MOTOR_SELECT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR1, logic.getCurrentState());
+    
+    // Release MOTOR_SELECT
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    // Press MOTOR_SELECT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR2, logic.getCurrentState());
+    
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR3, logic.getCurrentState());
+    
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR4, logic.getCurrentState());
+    
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    // Final press returns to WAIT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+}
+
+void test_motor_select_cycles_from_fault(void) {
+    logic._forceStateForTesting(SystemState::STATE_FAULT);
+    
+    // Press MOTOR_SELECT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR1, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR2, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR3, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_MOTOR4, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+    
+    // Final press returns to FAULT
+    btn.motor_sel = true; logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(SystemState::STATE_FAULT, logic.getCurrentState());
+    btn.motor_sel = false; logic.evaluate(btn, positions, throttles);
+}
+
+void test_motor_jog_applies_throttle(void) {
+    logic._forceStateForTesting(SystemState::STATE_MOTOR2);
+    
+    // We must have a racked roof to test jogging UP without holding CLEAR
+    // Set motor 2 (index 1) to be lower than the max.
+    positions[0] = 5000;
+    positions[1] = 0;
+    positions[2] = 5000;
+    positions[3] = 5000;
+    
+    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    
+    TEST_ASSERT_EQUAL(0, throttles[0]);
+    TEST_ASSERT_EQUAL(5, throttles[1]); // Motor 2 gets 5% UP because it's not the highest
+    TEST_ASSERT_EQUAL(0, throttles[2]);
+    TEST_ASSERT_EQUAL(0, throttles[3]);
+    
+    btn.up = false;
+    btn.down = true;
+    // Set motor 2 (index 1) to be higher than the min so we can jog it down
+    positions[0] = 0;
+    positions[1] = 5000;
+    positions[2] = 0;
+    positions[3] = 0;
+    logic.evaluate(btn, positions, throttles);
+    
+    TEST_ASSERT_EQUAL(0, throttles[0]);
+    TEST_ASSERT_EQUAL(-5, throttles[1]); // Motor 2 gets -5% DOWN because it's not the lowest
+    TEST_ASSERT_EQUAL(0, throttles[2]);
+    TEST_ASSERT_EQUAL(0, throttles[3]);
+    btn.down = false;
+}
+
+void test_motor_jog_respects_limits(void) {
+    logic._forceStateForTesting(SystemState::STATE_MOTOR3);
+    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    
+    // Try to lift when at upper limit
+    positions[0] = 11000; // Ensure motor 3 is not the highest, so rack protection allows it
+    positions[2] = 10000;
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[2]); // Respects upper limit (rack protection passed, limit failed)
+    
+    // Try to lower when at bottom
+    positions[0] = -100; // Ensure motor 3 is not the lowest, so rack protection allows it
+    positions[2] = 0;
+    btn.up = false;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[2]); // Respects lower limit (rack protection passed, limit failed)
+    btn.down = false;
+}
+
+void test_motor_jog_overrides_limits_with_clear(void) {
+    logic._forceStateForTesting(SystemState::STATE_MOTOR4);
+    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    
+    // Try to lift when at upper limit, BUT hold CLEAR
+    positions[0] = 0;
+    positions[3] = 10000; // Motor 4 is the highest, so rack protection normally blocks it
+    btn.up = true;
+    btn.clr = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(5, throttles[3]); // Overrides upper limit and rack protection
+    
+    // Try to lower when at bottom, BUT hold CLEAR
+    positions[0] = 5000;
+    positions[3] = 0; // Motor 4 is the lowest, so rack protection normally blocks it
+    btn.up = false;
+    btn.down = true;
+    btn.clr = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(-5, throttles[3]); // Overrides lower limit and rack protection
+    
+    btn.down = false;
+    btn.clr = false;
+}
+
+void test_motor_jog_prevents_worsening_rack(void) {
+    logic._forceStateForTesting(SystemState::STATE_MOTOR1);
+    
+    // Test 1: Perfectly level roof (0,0,0,0)
+    // Any movement worsens rack!
+    positions[0] = 0; positions[1] = 0; positions[2] = 0; positions[3] = 0;
+    logic.setInitialState(positions, 10000, nullptr);
+    
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[0]); // Blocked!
+    
+    // Test 2: Moving highest motor UP is blocked
+    positions[0] = 5000; positions[1] = 2000; positions[2] = 2000; positions[3] = 2000;
+    btn.up = true;
+    btn.down = false;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[0]); // Blocked because it's the highest
+    
+    // Test 3: Moving lowest motor DOWN is blocked
+    logic._forceStateForTesting(SystemState::STATE_MOTOR2); // Switch to motor 2 (index 1)
+    btn.up = false;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[1]); // Blocked because it's the lowest
+    
+    // Test 4: Moving lowest motor UP is ALLOWED
+    btn.up = true;
+    btn.down = false;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(5, throttles[1]); // Allowed!
+    
+    // Test 5: Moving highest motor DOWN is ALLOWED
+    logic._forceStateForTesting(SystemState::STATE_MOTOR1);
+    btn.up = false;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(-5, throttles[0]); // Allowed!
+    
+    btn.down = false;
+}
 
 void loop() {
     // Empty, testing is finished.
     // Add a small delay to feed the RTOS watchdog and prevent infinite resetting
     delay(100);
 }
-

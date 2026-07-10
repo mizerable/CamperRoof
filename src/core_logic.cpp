@@ -8,10 +8,52 @@ CoreLogic::CoreLogic() {
     faultClearedFlag = false;
     fault_clear_timer = 0;
     upperLimit = 0;
+    stateBeforeMotorSelect = SystemState::STATE_WAIT;
+    last_motor_sel_state = false;
+    motor_sel_rising_flag = false;
     for (int i=0; i<4; i++) {
         lastPositions[i] = 0;
         stallCounters[i] = 0;
         is_bottomed_out[i] = false;
+    }
+}
+
+bool CoreLogic::isMotorSelRising() const {
+    return motor_sel_rising_flag;
+}
+
+SystemState CoreLogic::getStateBeforeMotorSelect() const {
+    return stateBeforeMotorSelect;
+}
+
+void CoreLogic::saveStateBeforeMotorSelect(SystemState state) {
+    stateBeforeMotorSelect = state;
+}
+
+void CoreLogic::evaluateMotorSelEdge(const ButtonState& btn) {
+    motor_sel_rising_flag = btn.motor_sel && !last_motor_sel_state;
+    last_motor_sel_state = btn.motor_sel;
+}
+
+int32_t CoreLogic::getMinPosition(const int32_t pos[4]) const {
+    int32_t min_pos = pos[0];
+    for (int i = 1; i < 4; i++) {
+        if (pos[i] < min_pos) min_pos = pos[i];
+    }
+    return min_pos;
+}
+
+int32_t CoreLogic::getMaxPosition(const int32_t pos[4]) const {
+    int32_t max_pos = pos[0];
+    for (int i = 1; i < 4; i++) {
+        if (pos[i] > max_pos) max_pos = pos[i];
+    }
+    return max_pos;
+}
+
+void CoreLogic::clearThrottles(int16_t throttles[4]) const {
+    for (int i = 0; i < 4; i++) {
+        throttles[i] = 0;
     }
 }
 
@@ -41,13 +83,7 @@ void CoreLogic::getBottomedOutFlags(bool flagsOut[4]) const {
 }
 
 bool CoreLogic::hasDiverged(int32_t currentPositions[4]) const {
-    int32_t min_pos = currentPositions[0];
-    int32_t max_pos = currentPositions[0];
-    for (int i = 1; i < 4; i++) {
-        if (currentPositions[i] < min_pos) min_pos = currentPositions[i];
-        if (currentPositions[i] > max_pos) max_pos = currentPositions[i];
-    }
-    return (max_pos - min_pos) > MAX_DEVIATION;
+    return (getMaxPosition(currentPositions) - getMinPosition(currentPositions)) > MAX_DEVIATION;
 }
 
 bool CoreLogic::canEnterWait(int32_t currentPositions[4]) const {
@@ -101,13 +137,8 @@ void CoreLogic::apply_proportional_throttle(
     int32_t currentPositions[4],
     int16_t throttles[4]
 ) {
-    int32_t min_pos = currentPositions[0];
-    int32_t max_pos = currentPositions[0];
-
-    for (int i = 1; i < 4; i++) {
-        if (currentPositions[i] < min_pos) min_pos = currentPositions[i];
-        if (currentPositions[i] > max_pos) max_pos = currentPositions[i];
-    }
+    int32_t min_pos = getMinPosition(currentPositions);
+    int32_t max_pos = getMaxPosition(currentPositions);
 
     int32_t midpoint = (min_pos + max_pos) / 2;
 
@@ -157,28 +188,37 @@ void CoreLogic::evaluate(
     // 0. Real-time per-motor stall detection
     updateStallDetection(btn, currentPositions);
 
-    // 1. Evaluate Graph Transitions
-    for (StateNode* nextNode : currentNode->possibleNext) {
-        if (nextNode->signature.matches(btn)) {
-            if (nextNode->customCondition == nullptr || nextNode->customCondition(this, btn, currentPositions)) {
+    // 1. Evaluate Motor Sel Edge (for custom conditions)
+    evaluateMotorSelEdge(btn);
+
+    // 2. Evaluate Graph Transitions
+    for (const Transition& t : currentNode->transitions) {
+        if (t.signature.matches(btn)) {
+            if (t.customCondition == nullptr || t.customCondition(this, btn, currentPositions)) {
                 
-                // If we are leaving FAULT or entering WAIT, reset the fault flag
-                if (currentNode->stateId == SystemState::STATE_FAULT && nextNode->stateId != SystemState::STATE_FAULT) {
+                // Execute optional transition action
+                if (t.onTransition != nullptr) {
+                    t.onTransition(this);
+                }
+
+                // If we are leaving FAULT, reset the fault flag
+                if (currentNode->stateId == SystemState::STATE_FAULT && t.targetNode->stateId != SystemState::STATE_FAULT) {
                     faultClearedFlag = false;
                     fault_clear_timer = 0;
                 }
 
-                currentNode = nextNode;
+                currentNode = t.targetNode;
                 currentState = currentNode->stateId;
                 break; 
             }
         }
     }
 
-    // 2. Execute ongoing actions based on the current state
+    // 3. Execute ongoing actions based on the current state
     switch (currentState) {
         case SystemState::STATE_WAIT:
-            executeWaitActions(throttles);
+        case SystemState::STATE_BOTTOMED:
+            clearThrottles(throttles);
             break;
         case SystemState::STATE_LIFTING:
             executeLiftingActions(btn.clr, currentPositions, throttles);
@@ -192,14 +232,40 @@ void CoreLogic::evaluate(
         case SystemState::STATE_FAULT:
             executeFaultActions(btn, throttles);
             break;
-        case SystemState::STATE_BOTTOMED:
-            executeBottomedActions(throttles);
+        case SystemState::STATE_MOTOR1:
+            executeMotorJogActions(0, btn, currentPositions, throttles);
+            break;
+        case SystemState::STATE_MOTOR2:
+            executeMotorJogActions(1, btn, currentPositions, throttles);
+            break;
+        case SystemState::STATE_MOTOR3:
+            executeMotorJogActions(2, btn, currentPositions, throttles);
+            break;
+        case SystemState::STATE_MOTOR4:
+            executeMotorJogActions(3, btn, currentPositions, throttles);
             break;
     }
 }
 
-void CoreLogic::executeWaitActions(int16_t throttles[4]) {
-    for(int i=0; i<4; i++) throttles[i] = 0;
+void CoreLogic::executeMotorJogActions(int motorIdx, const ButtonState& btn, int32_t pos[4], int16_t throttles[4]) {
+    clearThrottles(throttles);
+
+    int32_t min_pos = getMinPosition(pos);
+    int32_t max_pos = getMaxPosition(pos);
+
+    if (btn.up && !btn.down) {
+        bool limit_ok = (btn.clr || pos[motorIdx] < upperLimit);
+        bool rack_ok = (btn.clr || pos[motorIdx] < max_pos);
+        if (limit_ok && rack_ok) {
+            throttles[motorIdx] = 5;
+        }
+    } else if (btn.down && !btn.up) {
+        bool limit_ok = (btn.clr || pos[motorIdx] > 0);
+        bool rack_ok = (btn.clr || pos[motorIdx] > min_pos);
+        if (limit_ok && rack_ok) {
+            throttles[motorIdx] = -5;
+        }
+    }
 }
 
 void CoreLogic::executeLiftingActions(bool overrideLimits, int32_t pos[4], int16_t throttles[4]) {
@@ -211,27 +277,20 @@ void CoreLogic::executeLoweringActions(bool overrideLimits, int32_t pos[4], int1
 }
 
 void CoreLogic::executeSetActions(const ButtonState& btn, int32_t pos[4], int16_t throttles[4]) {
-    for(int i=0; i<4; i++) throttles[i] = 0;
+    clearThrottles(throttles);
 
     if (btn.down && !btn.up && !btn.clr) {
-        int32_t max_pos_for_limit = pos[0];
-        for (int i = 1; i < 4; i++) {
-            if (pos[i] > max_pos_for_limit) max_pos_for_limit = pos[i];
-        }
+        int32_t max_pos_for_limit = getMaxPosition(pos);
         upperLimit -= max_pos_for_limit;
         for (int i = 0; i < 4; i++) pos[i] = 0;
     }
     else if (btn.up && !btn.down && !btn.clr) {
-        int32_t max_pos = pos[0];
-        for (int i = 1; i < 4; i++) {
-            if (pos[i] > max_pos) max_pos = pos[i];
-        }
-        upperLimit = max_pos;
+        upperLimit = getMaxPosition(pos);
     }
 }
 
 void CoreLogic::executeFaultActions(const ButtonState& btn, int16_t throttles[4]) {
-    for(int i=0; i<4; i++) throttles[i] = 0;
+    clearThrottles(throttles);
 
     if (btn.set && btn.clr) {
         fault_clear_timer++;
@@ -244,10 +303,6 @@ void CoreLogic::executeFaultActions(const ButtonState& btn, int16_t throttles[4]
             fault_clear_timer = 0;
         }
     }
-}
-
-void CoreLogic::executeBottomedActions(int16_t throttles[4]) {
-    for(int i=0; i<4; i++) throttles[i] = 0;
 }
 
 void CoreLogic::_forceStateForTesting(SystemState state) {

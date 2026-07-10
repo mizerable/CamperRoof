@@ -1,5 +1,4 @@
-#ifndef APP_RUNNER_H
-#define APP_RUNNER_H
+#pragma once
 
 #include "IMotorSystem.h"
 
@@ -8,4 +7,3 @@ public:
     static void start(IMotorSystem* motorSystem);
 };
 
-#endif // APP_RUNNER_H

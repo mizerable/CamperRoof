@@ -1,5 +1,4 @@
-#ifndef STORAGE_H
-#define STORAGE_H
+#pragma once
 
 #include <Arduino.h>
 
@@ -13,4 +12,3 @@ void read_state_from_fram(int32_t currentPositions[4], int32_t *upperLimit, bool
 // Note: This is fast enough to be called in the 50Hz main loop
 void write_state_to_fram(const int32_t currentPositions[4], int32_t upperLimit, const bool bottomedOutFlags[4]);
 
-#endif // STORAGE_H

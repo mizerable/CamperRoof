@@ -1,5 +1,4 @@
-#ifndef DISPLAY_H
-#define DISPLAY_H
+#pragma once
 
 #include <Arduino.h>
 #include "system_types.h"
@@ -10,4 +9,3 @@ bool setup_display();
 // Update the screen with the current state (called on Core 0)
 void update_display(const SharedState* state);
 
-#endif // DISPLAY_H

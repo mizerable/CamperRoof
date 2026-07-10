@@ -1,5 +1,4 @@
-#ifndef HARDWARE_MOTOR_SYSTEM_H
-#define HARDWARE_MOTOR_SYSTEM_H
+#pragma once
 
 #include "IMotorSystem.h"
 
@@ -10,4 +9,3 @@ public:
     void setThrottles(const int16_t throttles[4]) override;
 };
 
-#endif // HARDWARE_MOTOR_SYSTEM_H

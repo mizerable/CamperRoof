@@ -4,6 +4,7 @@
 #include "storage.h"
 #include <Arduino.h>
 #include <Wire.h>
+#include "ble_controller.h"
 
 #include "pins.h"
 
@@ -31,11 +32,13 @@ static ButtonState get_debounced_buttons() {
   current_read.down = (digitalRead(PIN_BTN_DOWN) == LOW);
   current_read.set = (digitalRead(PIN_BTN_SET) == LOW);
   current_read.clr = (digitalRead(PIN_BTN_CLEAR) == LOW);
+  current_read.motor_sel = (digitalRead(PIN_BTN_MOTOR_SELECT) == LOW);
 
   if (current_read.up == last_read_state.up &&
       current_read.down == last_read_state.down &&
       current_read.set == last_read_state.set &&
-      current_read.clr == last_read_state.clr) {
+      current_read.clr == last_read_state.clr &&
+      current_read.motor_sel == last_read_state.motor_sel) {
     stable_count++;
     if (stable_count >= DEBOUNCE_ITERATIONS) {
       stable_state = current_read;
@@ -58,6 +61,14 @@ static void MotorTask(void *pvParameters) {
   for (;;) {
     // 1. Read Inputs & Hardware/Mock Positions
     ButtonState btn = get_debounced_buttons();
+    ButtonState ble_btn = BLEController::get_ble_buttons();
+    
+    // Logically OR the physical and BLE buttons
+    btn.up = btn.up || ble_btn.up;
+    btn.down = btn.down || ble_btn.down;
+    btn.set = btn.set || ble_btn.set;
+    btn.clr = btn.clr || ble_btn.clr;
+    btn.motor_sel = btn.motor_sel || ble_btn.motor_sel;
     
     int32_t deltas[4] = {0, 0, 0, 0};
     g_motorSystem->getDeltas(deltas);
@@ -131,9 +142,13 @@ void AppRunner::start(IMotorSystem *motorSystem) {
   pinMode(PIN_BTN_DOWN, INPUT_PULLUP);
   pinMode(PIN_BTN_SET, INPUT_PULLUP);
   pinMode(PIN_BTN_CLEAR, INPUT_PULLUP);
+  pinMode(PIN_BTN_MOTOR_SELECT, INPUT_PULLUP);
 
   // Initialize Motor Subsystem (Hardware or Mock)
   g_motorSystem->init();
+
+  // Initialize BLE Controller
+  BLEController::init();
 
   // Initialize Other Subsystems
   setup_storage();

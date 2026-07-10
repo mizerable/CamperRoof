@@ -1,5 +1,4 @@
-#ifndef MOTOR_CONTROL_H
-#define MOTOR_CONTROL_H
+#pragma once
 
 #include <Arduino.h>
 
@@ -15,4 +14,3 @@ void set_motor_throttle(int motorIndex, int throttle);
 // Stops all 4 motors immediately
 void stop_all_motors();
 
-#endif // MOTOR_CONTROL_H
