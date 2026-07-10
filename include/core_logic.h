@@ -60,6 +60,11 @@ private:
     bool last_motor_sel_state;
     bool motor_sel_rising_flag;
 
+    // Helper Methods
+    int32_t getMinPosition(const int32_t pos[4]) const;
+    int32_t getMaxPosition(const int32_t pos[4]) const;
+    void clearThrottles(int16_t throttles[4]) const;
+
     // Bottom-Out Detection State
     int32_t lastPositions[4];
     int stallCounters[4];
@@ -72,13 +77,10 @@ private:
         int16_t throttles[4]
     );
 
-    // Isolated Action Handlers
-    void executeWaitActions(int16_t throttles[4]);
-    void executeLiftingActions(bool overrideLimits, int32_t currentPositions[4], int16_t throttles[4]);
-    void executeLoweringActions(bool overrideLimits, int32_t currentPositions[4], int16_t throttles[4]);
-    void executeSetActions(const ButtonState& btn, int32_t currentPositions[4], int16_t throttles[4]);
+    // State Execution Methods
+    void executeLiftingActions(bool overrideLimits, int32_t pos[4], int16_t throttles[4]);
+    void executeLoweringActions(bool overrideLimits, int32_t pos[4], int16_t throttles[4]);
+    void executeSetActions(const ButtonState& btn, int32_t pos[4], int16_t throttles[4]);
     void executeFaultActions(const ButtonState& btn, int16_t throttles[4]);
-    void executeBottomedActions(int16_t throttles[4]);
-    void executeMotorJogActions(int motorIdx, const ButtonState& btn, int32_t currentPositions[4], int16_t throttles[4]);
+    void executeMotorJogActions(int motorIdx, const ButtonState& btn, int32_t pos[4], int16_t throttles[4]);
 };
-

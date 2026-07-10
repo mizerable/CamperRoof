@@ -18,24 +18,14 @@ void set_motor_throttle(int motorIndex, int throttle) {
     uint8_t commandByte = 0;
     bool isRightMotor = (motorIndex % 2 != 0); // Motor 1 and 3 are "Right" channel on their respective Cytrons
     
-    if (!isRightMotor) {
-        // Left Channel (Motors 0 and 2)
-        if (throttle == 0) {
-            commandByte = 0; // Stop
-        } else if (throttle > 0) {
-            commandByte = map(throttle, 1, 100, 1, 63); // CW
-        } else {
-            commandByte = map(-throttle, 1, 100, 65, 127); // CCW
-        }
+    int offset = isRightMotor ? 128 : 0;
+    
+    if (throttle == 0) {
+        commandByte = offset; // Stop
+    } else if (throttle > 0) {
+        commandByte = map(throttle, 1, 100, offset + 1, offset + 63); // CW
     } else {
-        // Right Channel (Motors 1 and 3)
-        if (throttle == 0) {
-            commandByte = 128; // Stop
-        } else if (throttle > 0) {
-            commandByte = map(throttle, 1, 100, 129, 191); // CW
-        } else {
-            commandByte = map(-throttle, 1, 100, 193, 255); // CCW
-        }
+        commandByte = map(-throttle, 1, 100, offset + 65, offset + 127); // CCW
     }
 
     // Send to the correct Cytron

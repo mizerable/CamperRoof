@@ -1123,6 +1123,10 @@ void setup() {
     
     extern void test_motor_jog_overrides_limits_with_clear(void);
     RUN_TEST(test_motor_jog_overrides_limits_with_clear);
+    
+    extern void test_motor_jog_prevents_worsening_rack(void);
+    RUN_TEST(test_motor_jog_prevents_worsening_rack);
+    
     extern void test_ble_button_simulation(void);
     RUN_TEST(test_ble_button_simulation);
 
@@ -1369,23 +1373,34 @@ void test_motor_select_cycles_from_fault(void) {
 void test_motor_jog_applies_throttle(void) {
     logic._forceStateForTesting(SystemState::STATE_MOTOR2);
     
+    // We must have a racked roof to test jogging UP without holding CLEAR
+    // Set motor 2 (index 1) to be lower than the max.
+    positions[0] = 5000;
+    positions[1] = 0;
+    positions[2] = 5000;
+    positions[3] = 5000;
+    
     logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
     
     btn.up = true;
     logic.evaluate(btn, positions, throttles);
     
     TEST_ASSERT_EQUAL(0, throttles[0]);
-    TEST_ASSERT_EQUAL(5, throttles[1]); // Only motor 2 gets 5% UP
+    TEST_ASSERT_EQUAL(5, throttles[1]); // Motor 2 gets 5% UP because it's not the highest
     TEST_ASSERT_EQUAL(0, throttles[2]);
     TEST_ASSERT_EQUAL(0, throttles[3]);
     
     btn.up = false;
     btn.down = true;
-    positions[1] = 5000; // Above 0 so we can lower
+    // Set motor 2 (index 1) to be higher than the min so we can jog it down
+    positions[0] = 0;
+    positions[1] = 5000;
+    positions[2] = 0;
+    positions[3] = 0;
     logic.evaluate(btn, positions, throttles);
     
     TEST_ASSERT_EQUAL(0, throttles[0]);
-    TEST_ASSERT_EQUAL(-5, throttles[1]); // Only motor 2 gets -5% DOWN
+    TEST_ASSERT_EQUAL(-5, throttles[1]); // Motor 2 gets -5% DOWN because it's not the lowest
     TEST_ASSERT_EQUAL(0, throttles[2]);
     TEST_ASSERT_EQUAL(0, throttles[3]);
     btn.down = false;
@@ -1396,17 +1411,19 @@ void test_motor_jog_respects_limits(void) {
     logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
     
     // Try to lift when at upper limit
+    positions[0] = 11000; // Ensure motor 3 is not the highest, so rack protection allows it
     positions[2] = 10000;
     btn.up = true;
     logic.evaluate(btn, positions, throttles);
-    TEST_ASSERT_EQUAL(0, throttles[2]); // Respects upper limit
+    TEST_ASSERT_EQUAL(0, throttles[2]); // Respects upper limit (rack protection passed, limit failed)
     
     // Try to lower when at bottom
+    positions[0] = -100; // Ensure motor 3 is not the lowest, so rack protection allows it
     positions[2] = 0;
     btn.up = false;
     btn.down = true;
     logic.evaluate(btn, positions, throttles);
-    TEST_ASSERT_EQUAL(0, throttles[2]); // Respects lower limit
+    TEST_ASSERT_EQUAL(0, throttles[2]); // Respects lower limit (rack protection passed, limit failed)
     btn.down = false;
 }
 
@@ -1415,22 +1432,66 @@ void test_motor_jog_overrides_limits_with_clear(void) {
     logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
     
     // Try to lift when at upper limit, BUT hold CLEAR
-    positions[3] = 10000;
+    positions[0] = 0;
+    positions[3] = 10000; // Motor 4 is the highest, so rack protection normally blocks it
     btn.up = true;
     btn.clr = true;
     logic.evaluate(btn, positions, throttles);
-    TEST_ASSERT_EQUAL(5, throttles[3]); // Overrides upper limit
+    TEST_ASSERT_EQUAL(5, throttles[3]); // Overrides upper limit and rack protection
     
     // Try to lower when at bottom, BUT hold CLEAR
-    positions[3] = 0;
+    positions[0] = 5000;
+    positions[3] = 0; // Motor 4 is the lowest, so rack protection normally blocks it
     btn.up = false;
     btn.down = true;
     btn.clr = true;
     logic.evaluate(btn, positions, throttles);
-    TEST_ASSERT_EQUAL(-5, throttles[3]); // Overrides lower limit
+    TEST_ASSERT_EQUAL(-5, throttles[3]); // Overrides lower limit and rack protection
     
     btn.down = false;
     btn.clr = false;
+}
+
+void test_motor_jog_prevents_worsening_rack(void) {
+    logic._forceStateForTesting(SystemState::STATE_MOTOR1);
+    
+    // Test 1: Perfectly level roof (0,0,0,0)
+    // Any movement worsens rack!
+    positions[0] = 0; positions[1] = 0; positions[2] = 0; positions[3] = 0;
+    logic.setInitialState(positions, 10000, nullptr);
+    
+    btn.up = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[0]); // Blocked!
+    
+    // Test 2: Moving highest motor UP is blocked
+    positions[0] = 5000; positions[1] = 2000; positions[2] = 2000; positions[3] = 2000;
+    btn.up = true;
+    btn.down = false;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[0]); // Blocked because it's the highest
+    
+    // Test 3: Moving lowest motor DOWN is blocked
+    logic._forceStateForTesting(SystemState::STATE_MOTOR2); // Switch to motor 2 (index 1)
+    btn.up = false;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(0, throttles[1]); // Blocked because it's the lowest
+    
+    // Test 4: Moving lowest motor UP is ALLOWED
+    btn.up = true;
+    btn.down = false;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(5, throttles[1]); // Allowed!
+    
+    // Test 5: Moving highest motor DOWN is ALLOWED
+    logic._forceStateForTesting(SystemState::STATE_MOTOR1);
+    btn.up = false;
+    btn.down = true;
+    logic.evaluate(btn, positions, throttles);
+    TEST_ASSERT_EQUAL(-5, throttles[0]); // Allowed!
+    
+    btn.down = false;
 }
 
 void loop() {
