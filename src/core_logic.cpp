@@ -10,11 +10,29 @@ CoreLogic::CoreLogic() {
     upperLimit = 0;
     stateBeforeMotorSelect = SystemState::STATE_WAIT;
     last_motor_sel_state = false;
+    motor_sel_rising_flag = false;
     for (int i=0; i<4; i++) {
         lastPositions[i] = 0;
         stallCounters[i] = 0;
         is_bottomed_out[i] = false;
     }
+}
+
+bool CoreLogic::isMotorSelRising() const {
+    return motor_sel_rising_flag;
+}
+
+SystemState CoreLogic::getStateBeforeMotorSelect() const {
+    return stateBeforeMotorSelect;
+}
+
+void CoreLogic::saveStateBeforeMotorSelect(SystemState state) {
+    stateBeforeMotorSelect = state;
+}
+
+void CoreLogic::evaluateMotorSelEdge(const ButtonState& btn) {
+    motor_sel_rising_flag = btn.motor_sel && !last_motor_sel_state;
+    last_motor_sel_state = btn.motor_sel;
 }
 
 void CoreLogic::setInitialState(int32_t positions[4], int32_t limit, const bool bottomedOutFlags[4]) {
@@ -159,58 +177,28 @@ void CoreLogic::evaluate(
     // 0. Real-time per-motor stall detection
     updateStallDetection(btn, currentPositions);
 
-    // 1. Handle MOTOR_SELECT button edge
-    bool motor_sel_rising = btn.motor_sel && !last_motor_sel_state;
-    last_motor_sel_state = btn.motor_sel;
+    // 1. Evaluate Motor Sel Edge (for custom conditions)
+    evaluateMotorSelEdge(btn);
 
-    if (motor_sel_rising) {
-        if (currentState == SystemState::STATE_WAIT || currentState == SystemState::STATE_FAULT) {
-            stateBeforeMotorSelect = currentState;
-            currentState = SystemState::STATE_MOTOR1;
-            currentNode = &systemGraph.motor1Node;
-        }
-        else if (currentState == SystemState::STATE_MOTOR1) {
-            currentState = SystemState::STATE_MOTOR2;
-            currentNode = &systemGraph.motor2Node;
-        }
-        else if (currentState == SystemState::STATE_MOTOR2) {
-            currentState = SystemState::STATE_MOTOR3;
-            currentNode = &systemGraph.motor3Node;
-        }
-        else if (currentState == SystemState::STATE_MOTOR3) {
-            currentState = SystemState::STATE_MOTOR4;
-            currentNode = &systemGraph.motor4Node;
-        }
-        else if (currentState == SystemState::STATE_MOTOR4) {
-            currentState = stateBeforeMotorSelect;
-            if (stateBeforeMotorSelect == SystemState::STATE_WAIT) {
-                currentNode = &systemGraph.waitNode;
-            } else {
-                currentNode = &systemGraph.faultNode;
-            }
-        }
-    }
-
-    // 2. Evaluate Graph Transitions (skip if in manual motor jog state)
-    if (currentState != SystemState::STATE_MOTOR1 && 
-        currentState != SystemState::STATE_MOTOR2 && 
-        currentState != SystemState::STATE_MOTOR3 && 
-        currentState != SystemState::STATE_MOTOR4) {
-        
-        for (StateNode* nextNode : currentNode->possibleNext) {
-            if (nextNode->signature.matches(btn)) {
-                if (nextNode->customCondition == nullptr || nextNode->customCondition(this, btn, currentPositions)) {
-                    
-                    // If we are leaving FAULT or entering WAIT, reset the fault flag
-                    if (currentNode->stateId == SystemState::STATE_FAULT && nextNode->stateId != SystemState::STATE_FAULT) {
-                        faultClearedFlag = false;
-                        fault_clear_timer = 0;
-                    }
-
-                    currentNode = nextNode;
-                    currentState = currentNode->stateId;
-                    break; 
+    // 2. Evaluate Graph Transitions
+    for (const Transition& t : currentNode->transitions) {
+        if (t.signature.matches(btn)) {
+            if (t.customCondition == nullptr || t.customCondition(this, btn, currentPositions)) {
+                
+                // Execute optional transition action
+                if (t.onTransition != nullptr) {
+                    t.onTransition(this);
                 }
+
+                // If we are leaving FAULT, reset the fault flag
+                if (currentNode->stateId == SystemState::STATE_FAULT && t.targetNode->stateId != SystemState::STATE_FAULT) {
+                    faultClearedFlag = false;
+                    fault_clear_timer = 0;
+                }
+
+                currentNode = t.targetNode;
+                currentState = currentNode->stateId;
+                break; 
             }
         }
     }

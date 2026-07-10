@@ -42,6 +42,11 @@ public:
     bool hasBottomedOut() const;
     void updateStallDetection(const ButtonState& btn, int32_t currentPositions[4]);
 
+    bool isMotorSelRising() const;
+    SystemState getStateBeforeMotorSelect() const;
+    void saveStateBeforeMotorSelect(SystemState state);
+    void evaluateMotorSelEdge(const ButtonState& btn);
+
     // For unit testing only
     void _forceStateForTesting(SystemState state);
 
@@ -53,6 +58,7 @@ private:
     bool faultClearedFlag;
     SystemState stateBeforeMotorSelect;
     bool last_motor_sel_state;
+    bool motor_sel_rising_flag;
 
     // Bottom-Out Detection State
     int32_t lastPositions[4];

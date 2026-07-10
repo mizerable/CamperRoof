@@ -990,36 +990,49 @@ void test_graph_no_ambiguities(void) {
     // We will test every state node
     for (StateNode* node : systemGraph.allNodes) {
         
-        // Test all 16 button combinations
-        for (int b = 0; b < 16; b++) {
+        // Test all 32 button combinations (including motor_sel)
+        for (int b = 0; b < 32; b++) {
             ButtonState testBtn;
             testBtn.up = (b & 1) != 0;
             testBtn.down = (b & 2) != 0;
             testBtn.set = (b & 4) != 0;
             testBtn.clr = (b & 8) != 0;
+            testBtn.motor_sel = (b & 16) != 0;
             
             // Test both divergence conditions
             for (int div = 0; div <= 1; div++) {
-                int32_t pos[4] = {0, 0, 0, 0};
-                if (div == 1) pos[0] = 1000; // Force divergence
-                
-                // Force CoreLogic into the source state so custom conditions (like canEnterWait) 
-                // have the correct context to evaluate!
-                logic._forceStateForTesting(node->stateId);
-                
-                int validTransitions = 0;
-                
-                // Ensure no more than 1 outgoing edge is valid
-                for (StateNode* nextNode : node->possibleNext) {
-                    if (nextNode->signature.matches(testBtn)) {
-                        if (nextNode->customCondition == nullptr || nextNode->customCondition(&logic, testBtn, pos)) {
-                            validTransitions++;
+                // Test both edge cases for motor_sel
+                for (int edge = 0; edge <= 1; edge++) {
+                    int32_t pos[4] = {0, 0, 0, 0};
+                    if (div == 1) pos[0] = 1000; // Force divergence
+                    
+                    // Force CoreLogic into the source state
+                    logic._forceStateForTesting(node->stateId);
+                    
+                    // Setup edge detector state
+                    ButtonState prevBtn = testBtn;
+                    if (edge == 1) { // Force a rising edge context if testBtn.motor_sel is true
+                        prevBtn.motor_sel = false;
+                    } else { // No rising edge
+                        prevBtn.motor_sel = testBtn.motor_sel; 
+                    }
+                    logic.evaluateMotorSelEdge(prevBtn);
+                    logic.evaluateMotorSelEdge(testBtn);
+                    
+                    int validTransitions = 0;
+                    
+                    // Ensure no more than 1 outgoing edge is valid
+                    for (const Transition& t : node->transitions) {
+                        if (t.signature.matches(testBtn)) {
+                            if (t.customCondition == nullptr || t.customCondition(&logic, testBtn, pos)) {
+                                validTransitions++;
+                            }
                         }
                     }
+                    
+                    // Assert that the graph is mathematically unambiguous
+                    TEST_ASSERT_LESS_OR_EQUAL_MESSAGE(1, validTransitions, "Graph Ambiguity Detected!");
                 }
-                
-                // Assert that the graph is mathematically unambiguous
-                TEST_ASSERT_LESS_OR_EQUAL_MESSAGE(1, validTransitions, "Graph Ambiguity Detected!");
             }
         }
     }

@@ -8,23 +8,30 @@
 #define ANY -1
 
 struct ButtonTrigger {
-    int up, down, set, clr;
+    int up, down, set, clr, motor_sel;
     bool matches(const ButtonState& btn) const {
         if (up != ANY && ((up == P) != btn.up)) return false;
         if (down != ANY && ((down == P) != btn.down)) return false;
         if (set != ANY && ((set == P) != btn.set)) return false;
         if (clr != ANY && ((clr == P) != btn.clr)) return false;
+        if (motor_sel != ANY && ((motor_sel == P) != btn.motor_sel)) return false;
         return true;
     }
 };
 
 class CoreLogic; // Forward declaration
+struct StateNode;
+
+struct Transition {
+    ButtonTrigger signature;
+    bool (*customCondition)(CoreLogic* ctx, const ButtonState& btn, int32_t pos[4]);
+    StateNode* targetNode;
+    void (*onTransition)(CoreLogic* ctx); // Optional action
+};
 
 struct StateNode {
     SystemState stateId;
-    ButtonTrigger signature;
-    bool (*customCondition)(CoreLogic* ctx, const ButtonState& btn, int32_t pos[4]);
-    std::vector<StateNode*> possibleNext;
+    std::vector<Transition> transitions;
 };
 
 class StateGraph {
