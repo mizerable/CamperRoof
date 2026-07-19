@@ -20,11 +20,11 @@
 
 // --- PCNT (PULSE COUNTERS / ENCODERS) ---
 // Each motor has 2 quadrature pins (Phase A and Phase B)
-#define PIN_M1_PHASE_A A2
+#define PIN_M1_PHASE_A A7
 #define PIN_M1_PHASE_B A13
 
-#define PIN_M2_PHASE_A A4
-#define PIN_M2_PHASE_B A3
+#define PIN_M2_PHASE_A SCK
+#define PIN_M2_PHASE_B 21
 
 #define PIN_M3_PHASE_A A5
 #define PIN_M3_PHASE_B MOSI
