@@ -73,7 +73,6 @@ void test_no_stall_on_steady_movement(void) {
 void test_no_stall_on_minor_bog_down_without_throttle_increase(void) {
     int16_t reqThrottles[4] = {50, 50, 50, 50};
     
-    // 10 ticks of normal speed
     for (int t=0; t<10; t++) {
         for(int i=0; i<4; i++) mockMotor->nextDeltas[i] = 20;
         int32_t deltas[4];
@@ -82,7 +81,6 @@ void test_no_stall_on_minor_bog_down_without_throttle_increase(void) {
         stallSystem->setThrottles(reqThrottles);
     }
     
-    // Now bog down to delta=10, BUT throttle stays at 50
     bool stalled = false;
     for (int t=0; t<10; t++) {
         for(int i=0; i<4; i++) mockMotor->nextDeltas[i] = 10;
@@ -96,14 +94,12 @@ void test_no_stall_on_minor_bog_down_without_throttle_increase(void) {
         }
     }
     
-    // Should NOT stall because throttle didn't ramp up by 20%
     TEST_ASSERT_FALSE(stalled);
 }
 
 void test_stall_triggers_on_throttle_ramp_with_bog_down(void) {
     int16_t reqThrottles[4] = {50, 50, 50, 50};
     
-    // 10 ticks of normal speed
     for (int t=0; t<10; t++) {
         for(int i=0; i<4; i++) mockMotor->nextDeltas[i] = 20;
         int32_t deltas[4];
@@ -112,7 +108,6 @@ void test_stall_triggers_on_throttle_ramp_with_bog_down(void) {
         stallSystem->setThrottles(reqThrottles);
     }
     
-    // Now bog down to delta=5, AND throttle ramps up to 75 (increase > 20)
     for(int i=0; i<4; i++) reqThrottles[i] = 75;
     
     bool stalled = false;
@@ -128,7 +123,6 @@ void test_stall_triggers_on_throttle_ramp_with_bog_down(void) {
         }
     }
     
-    // Should stall because throttle ramped up by > 20 but speed dropped
     TEST_ASSERT_TRUE(stalled);
     TEST_ASSERT_EQUAL(0, mockMotor->lastThrottles[0]);
 }
@@ -136,7 +130,6 @@ void test_stall_triggers_on_throttle_ramp_with_bog_down(void) {
 void test_stall_triggers_when_throttle_maxed_out(void) {
     int16_t reqThrottles[4] = {100, 100, 100, 100};
     
-    // 10 ticks of normal speed at max throttle
     for (int t=0; t<10; t++) {
         for(int i=0; i<4; i++) mockMotor->nextDeltas[i] = 40;
         int32_t deltas[4];
@@ -145,8 +138,6 @@ void test_stall_triggers_when_throttle_maxed_out(void) {
         stallSystem->setThrottles(reqThrottles);
     }
     
-    // Now speed drops to 0 (dead stop), throttle is still 100
-    // It can't increase by 20, but it is >= 95
     bool stalled = false;
     for (int t=0; t<10; t++) {
         for(int i=0; i<4; i++) mockMotor->nextDeltas[i] = 0;
@@ -164,27 +155,97 @@ void test_stall_triggers_when_throttle_maxed_out(void) {
     TEST_ASSERT_EQUAL(0, mockMotor->lastThrottles[0]);
 }
 
+void test_group_halt_lifting(void) {
+    int16_t reqThrottles[4] = {100, 100, 100, 100};
+    
+    for (int t=0; t<10; t++) {
+        for(int i=0; i<4; i++) mockMotor->nextDeltas[i] = 40;
+        int32_t deltas[4];
+        stallSystem->getDeltas(deltas);
+        stallSystem->updateClearButton(false);
+        stallSystem->setThrottles(reqThrottles);
+    }
+    
+    // Only motor 0 stalls, the others are still trying to move
+    bool stalled = false;
+    for (int t=0; t<10; t++) {
+        mockMotor->nextDeltas[0] = 0; // Motor 0 dead stop
+        mockMotor->nextDeltas[1] = 40;
+        mockMotor->nextDeltas[2] = 40;
+        mockMotor->nextDeltas[3] = 40;
+        
+        int32_t deltas[4];
+        stallSystem->getDeltas(deltas);
+        stallSystem->updateClearButton(false);
+        stallSystem->setThrottles(reqThrottles);
+        if (stallSystem->getMotorState(0) == MotorState::STALLED_LIFTING) {
+            stalled = true;
+            break;
+        }
+    }
+    
+    TEST_ASSERT_TRUE(stalled);
+    // Because motor 0 stalled while lifting, ALL motors should be forced to 0 throttle
+    for(int i=0; i<4; i++) {
+        TEST_ASSERT_EQUAL(0, mockMotor->lastThrottles[i]);
+    }
+}
+
+void test_no_group_halt_lowering(void) {
+    int16_t reqThrottles[4] = {-100, -100, -100, -100};
+    
+    for (int t=0; t<10; t++) {
+        for(int i=0; i<4; i++) mockMotor->nextDeltas[i] = -40;
+        int32_t deltas[4];
+        stallSystem->getDeltas(deltas);
+        stallSystem->updateClearButton(false);
+        stallSystem->setThrottles(reqThrottles);
+    }
+    
+    // Motor 0 hits the bottom and stalls
+    bool stalled = false;
+    for (int t=0; t<10; t++) {
+        mockMotor->nextDeltas[0] = 0; // Motor 0 seated
+        mockMotor->nextDeltas[1] = -40;
+        mockMotor->nextDeltas[2] = -40;
+        mockMotor->nextDeltas[3] = -40;
+        
+        int32_t deltas[4];
+        stallSystem->getDeltas(deltas);
+        stallSystem->updateClearButton(false);
+        stallSystem->setThrottles(reqThrottles);
+        if (stallSystem->getMotorState(0) == MotorState::STALLED_LOWERING) {
+            stalled = true;
+            break;
+        }
+    }
+    
+    TEST_ASSERT_TRUE(stalled);
+    // Motor 0 should be 0 throttle
+    TEST_ASSERT_EQUAL(0, mockMotor->lastThrottles[0]);
+    // Motors 1, 2, 3 should STILL be commanding -100 to seat themselves!
+    for(int i=1; i<4; i++) {
+        TEST_ASSERT_EQUAL(-100, mockMotor->lastThrottles[i]);
+    }
+}
+
 void test_clear_button_overrides_stall(void) {
-    // Cause a stall
     test_stall_triggers_when_throttle_maxed_out();
     
-    // Now hold CLEAR
     int16_t reqThrottles[4] = {100, 100, 100, 100};
     int32_t deltas[4];
     stallSystem->getDeltas(deltas);
-    stallSystem->updateClearButton(true); // CLEAR HELD!
+    stallSystem->updateClearButton(true); 
     stallSystem->setThrottles(reqThrottles);
     
     TEST_ASSERT_EQUAL(MotorState::OK, stallSystem->getMotorState(0));
-    TEST_ASSERT_EQUAL(100, mockMotor->lastThrottles[0]); // Throttle passes through!
+    TEST_ASSERT_EQUAL(100, mockMotor->lastThrottles[0]); 
 }
 
 void test_opposite_direction_clears_stall(void) {
-    // Cause a lifting stall
     test_stall_triggers_when_throttle_maxed_out();
     TEST_ASSERT_EQUAL(MotorState::STALLED_LIFTING, stallSystem->getMotorState(0));
     
-    // Command LOWERING
     int16_t reqThrottles[4] = {-50, -50, -50, -50};
     int32_t deltas[4];
     stallSystem->getDeltas(deltas);
@@ -192,7 +253,7 @@ void test_opposite_direction_clears_stall(void) {
     stallSystem->setThrottles(reqThrottles);
     
     TEST_ASSERT_EQUAL(MotorState::OK, stallSystem->getMotorState(0));
-    TEST_ASSERT_EQUAL(-50, mockMotor->lastThrottles[0]); // Passed through
+    TEST_ASSERT_EQUAL(-50, mockMotor->lastThrottles[0]); 
 }
 
 void setup() {
@@ -203,6 +264,8 @@ void setup() {
     RUN_TEST(test_no_stall_on_minor_bog_down_without_throttle_increase);
     RUN_TEST(test_stall_triggers_on_throttle_ramp_with_bog_down);
     RUN_TEST(test_stall_triggers_when_throttle_maxed_out);
+    RUN_TEST(test_group_halt_lifting);
+    RUN_TEST(test_no_group_halt_lowering);
     RUN_TEST(test_clear_button_overrides_stall);
     RUN_TEST(test_opposite_direction_clears_stall);
     UNITY_END();

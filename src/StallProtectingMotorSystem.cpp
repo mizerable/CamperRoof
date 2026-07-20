@@ -92,9 +92,25 @@ void StallProtectingMotorSystem::setThrottles(const int16_t throttles[4]) {
 
         // Override logic
         final_throttles[i] = throttles[i];
-        if (currentStates[i] == MotorState::STALLED_LIFTING && final_throttles[i] > 0) {
+    }
+    
+    // Check for group halt condition (Lifting only)
+    bool any_stalled_lifting = false;
+    for (int i = 0; i < 4; i++) {
+        if (currentStates[i] == MotorState::STALLED_LIFTING) {
+            any_stalled_lifting = true;
+            break;
+        }
+    }
+    
+    // Apply overrides
+    for (int i = 0; i < 4; i++) {
+        // LIFTING: Group Halt - if ANY motor is jammed, NO motor is allowed to lift
+        if (any_stalled_lifting && final_throttles[i] > 0) {
             final_throttles[i] = 0;
         }
+        
+        // LOWERING: Individual Halt - only the stalled motor stops (allows others to seat)
         if (currentStates[i] == MotorState::STALLED_LOWERING && final_throttles[i] < 0) {
             final_throttles[i] = 0;
         }
