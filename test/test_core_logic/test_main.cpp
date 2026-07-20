@@ -1,4 +1,4 @@
-#include <Arduino.h>
+﻿#include <Arduino.h>
 #include <unity.h>
 #include <Wire.h>
 #include "storage.h"
@@ -159,51 +159,6 @@ void test_override_limits(void) {
     TEST_ASSERT_NOT_EQUAL(0, throttles[0]);
 }
 
-void test_per_motor_bottom_out_detection(void) {
-    for(int i=0; i<4; i++) positions[i] = 5000; // Start high enough to not hit soft limit
-    // 1. Start lowering
-    btn.down = true;
-    logic.evaluate(btn, positions, throttles);
-    
-    // Simulate motors bogging down (delta < 20 per tick) for 15 ticks
-    for(int loop=0; loop<15; loop++) {
-        for(int i=0; i<4; i++) {
-            positions[i] -= 5; 
-        }
-        logic.evaluate(btn, positions, throttles);
-    }
-    
-    // 2. Verify throttle is forced to 0
-    TEST_ASSERT_EQUAL(0, throttles[0]);
-    
-    // 3. Validate flags set
-    bool bottomed_flags[4];
-    logic.getBottomedOutFlags(bottomed_flags);
-    for(int i=0; i<4; i++) {
-        TEST_ASSERT_TRUE(bottomed_flags[i]);
-    }
-    
-    // 4. State should have transitioned to BOTTOMED
-    TEST_ASSERT_EQUAL(SystemState::STATE_BOTTOMED, logic.getCurrentState());
-
-    // 5. Test LIFTING clears bottom out flag (Must transition to WAIT first!)
-    btn.down = false;
-    btn.up = false;
-    logic.evaluate(btn, positions, throttles);
-    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, logic.getCurrentState());
-    
-    btn.up = true;
-    logic.evaluate(btn, positions, throttles); // Transitions to LIFTING
-    logic.evaluate(btn, positions, throttles); // Runs updateStallDetection in LIFTING state
-    TEST_ASSERT_EQUAL(SystemState::STATE_LIFTING, logic.getCurrentState());
-    
-    // Validate bottomed flags are cleared
-    bool cleared_flags[4];
-    logic.getBottomedOutFlags(cleared_flags);
-    for(int i=0; i<4; i++) {
-        TEST_ASSERT_FALSE(cleared_flags[i]);
-    }
-}
 
 SystemState get_expected_next_state(SystemState current, const ButtonState& b, bool isDiverged, bool isBottomedOut) {
     if (current == SystemState::STATE_WAIT) {
@@ -219,7 +174,6 @@ SystemState get_expected_next_state(SystemState current, const ButtonState& b, b
     }
     else if (current == SystemState::STATE_LOWERING) {
         if (isDiverged) return SystemState::STATE_FAULT;
-        if (isBottomedOut && !b.up && b.down && !b.set) return SystemState::STATE_BOTTOMED;
         if (!b.up && !b.down && !b.set) return SystemState::STATE_WAIT;
         return SystemState::STATE_LOWERING;
     }
@@ -229,10 +183,6 @@ SystemState get_expected_next_state(SystemState current, const ButtonState& b, b
     }
     else if (current == SystemState::STATE_FAULT) {
         return SystemState::STATE_FAULT; // In a single tick test, fault is never cleared.
-    }
-    else if (current == SystemState::STATE_BOTTOMED) {
-        if (!b.up && !b.down && !b.set) return SystemState::STATE_WAIT;
-        return SystemState::STATE_BOTTOMED;
     }
     return SystemState::STATE_WAIT;
 }
@@ -247,8 +197,7 @@ void test_exhaustive_state_transitions(void) {
         SystemState::STATE_LIFTING,
         SystemState::STATE_LOWERING,
         SystemState::STATE_FAULT,
-        SystemState::STATE_SET,
-        SystemState::STATE_BOTTOMED
+        SystemState::STATE_SET
     };
     
     for (SystemState startState : all_states) {
@@ -262,7 +211,7 @@ void test_exhaustive_state_transitions(void) {
             
             // Re-instantiate to avoid state bleed (like stallCounters accumulating)
             CoreLogic exLogic1;
-            exLogic1.setInitialState(pos, 10000, nullptr);
+            exLogic1.setInitialState(pos, 10000);
             exLogic1._forceStateForTesting(startState);
             exLogic1.evaluate(b, pos, throttles);
             SystemState expected = get_expected_next_state(startState, b, false, false);
@@ -270,7 +219,7 @@ void test_exhaustive_state_transitions(void) {
             
             CoreLogic exLogic2;
             int32_t divPos[4] = {5000, 5000, 5000, 5600};
-            exLogic2.setInitialState(pos, 10000, nullptr);
+            exLogic2.setInitialState(pos, 10000);
             exLogic2._forceStateForTesting(startState);
             exLogic2.evaluate(b, divPos, throttles);
             expected = get_expected_next_state(startState, b, true, false);
@@ -279,44 +228,6 @@ void test_exhaustive_state_transitions(void) {
     }
 }
 
-void test_immediate_rebottoming_with_fram(void) {
-    // 1. Simulate a reboot with FRAM loaded
-    int32_t init_pos[4] = {0, 0, 0, 0};
-    bool bottomed_flags[4] = {true, true, true, true};
-    
-    CoreLogic rebooted_logic;
-    rebooted_logic.setInitialState(init_pos, 25000, bottomed_flags);
-    
-    // Booted up in WAIT state
-    TEST_ASSERT_EQUAL(SystemState::STATE_WAIT, rebooted_logic.getCurrentState());
-    
-    // 2. User presses DOWN
-    btn.up = false;
-    btn.down = true;
-    btn.set = false;
-    btn.clr = false;
-    
-    // 3. First tick
-    int16_t out_throttles[4] = { -1, -1, -1, -1 };
-    rebooted_logic.evaluate(btn, init_pos, out_throttles);
-    
-    // The system evaluates the transition to LOWERING first, but updateStallDetection 
-    // preserves the TRUE flags from boot because delta is 0! 
-    // Wait, the stall logic checks BEFORE transitions!
-    // But then the throttle override kicks in and forces throttles to 0.
-    // And because ALL 4 are true, hasBottomedOut is true, and it transitions to BOTTOMED!
-    
-    // Actually, on the FIRST evaluate from WAIT -> LOWERING, it transitions to LOWERING.
-    // On the SECOND evaluate, since it's now in LOWERING, it checks bottomedNode transition!
-    rebooted_logic.evaluate(btn, init_pos, out_throttles);
-    
-    TEST_ASSERT_EQUAL(SystemState::STATE_BOTTOMED, rebooted_logic.getCurrentState());
-    
-    // Crucially, verify that the motors received exactly ZERO throttle during this entire time
-    for (int i=0; i<4; i++) {
-        TEST_ASSERT_EQUAL(0, out_throttles[i]);
-    }
-}
 
 // ---------------------------------------------------------
 // 3. FAULT STATE TESTS
@@ -620,7 +531,7 @@ void test_full_lifecycle_with_physical_fram(void) {
 
     // 2. Start fresh by overwriting FRAM with zeros
     int32_t initial_pos[4] = {0, 0, 0, 0};
-    write_state_to_fram(initial_pos, 0, nullptr);
+    write_state_to_fram(initial_pos, 0);
     
     // Completely reset the global logic object to match the wiped FRAM
     logic.setInitialState(initial_pos, 0);
@@ -637,7 +548,7 @@ void test_full_lifecycle_with_physical_fram(void) {
         logic.evaluate(btn, positions, throttles);
         positions[0] += 50; positions[1] += 50; positions[2] += 50; positions[3] += 50;
         // System writes to FRAM in the loop
-        write_state_to_fram(positions, logic.getUpperLimit(), nullptr);
+        write_state_to_fram(positions, logic.getUpperLimit());
         
         // Update display every 50 loops so it doesn't look frozen
         if (i % 50 == 0) update_test_display();
@@ -650,7 +561,7 @@ void test_full_lifecycle_with_physical_fram(void) {
     // First, user releases UP button to stop lifting and enter WAIT state
     btn.up = false;
     logic.evaluate(btn, positions, throttles);
-    write_state_to_fram(positions, logic.getUpperLimit(), nullptr);
+    write_state_to_fram(positions, logic.getUpperLimit());
     update_test_display();
     
     // User presses SET to enter SET state
@@ -661,7 +572,7 @@ void test_full_lifecycle_with_physical_fram(void) {
     // User presses UP to lock in the new upper limit
     btn.up = true;
     logic.evaluate(btn, positions, throttles);
-    write_state_to_fram(positions, logic.getUpperLimit(), nullptr);
+    write_state_to_fram(positions, logic.getUpperLimit());
     update_test_display();
     
     // 5. User releases SET and UP to return to WAIT
@@ -676,7 +587,7 @@ void test_full_lifecycle_with_physical_fram(void) {
     for (int i=0; i<400; i++) { // Lower by 20000
         logic.evaluate(btn, positions, throttles);
         positions[0] -= 50; positions[1] -= 50; positions[2] -= 50; positions[3] -= 50;
-        write_state_to_fram(positions, logic.getUpperLimit(), nullptr);
+        write_state_to_fram(positions, logic.getUpperLimit());
         
         if (i % 50 == 0) update_test_display();
         
@@ -687,7 +598,7 @@ void test_full_lifecycle_with_physical_fram(void) {
     // 5.5 USER RELEASES BUTTON (Triggers the final FRAM save of the 5000 positions!)
     btn.down = false;
     logic.evaluate(btn, positions, throttles);
-    write_state_to_fram(positions, logic.getUpperLimit(), nullptr);
+    write_state_to_fram(positions, logic.getUpperLimit());
     
     // Check local RAM state
     TEST_ASSERT_EQUAL(5000, positions[0]);
@@ -705,7 +616,7 @@ void test_full_lifecycle_with_physical_fram(void) {
     int32_t recovered_positions[4] = {-1, -1, -1, -1};
     int32_t recovered_limit = -1;
     // On reboot, the system reads from FRAM
-    read_state_from_fram(recovered_positions, &recovered_limit, nullptr);
+    read_state_from_fram(recovered_positions, &recovered_limit);
     new_logic.setInitialState(recovered_positions, recovered_limit);
 
     // 8. Verify everything matches reality perfectly!
@@ -1098,12 +1009,6 @@ void setup() {
     extern void test_override_limits_lowering(void);
     RUN_TEST(test_override_limits_lowering);
     
-    extern void test_per_motor_bottom_out_detection(void);
-    RUN_TEST(test_per_motor_bottom_out_detection);
-    
-    extern void test_immediate_rebottoming_with_fram(void);
-    RUN_TEST(test_immediate_rebottoming_with_fram);
-    
     extern void test_exhaustive_state_transitions(void);
     RUN_TEST(test_exhaustive_state_transitions);
     
@@ -1380,7 +1285,7 @@ void test_motor_jog_applies_throttle(void) {
     positions[2] = 5000;
     positions[3] = 5000;
     
-    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    logic.setInitialState(positions, 10000); // Limit is 10000
     
     btn.up = true;
     logic.evaluate(btn, positions, throttles);
@@ -1408,7 +1313,7 @@ void test_motor_jog_applies_throttle(void) {
 
 void test_motor_jog_respects_limits(void) {
     logic._forceStateForTesting(SystemState::STATE_MOTOR3);
-    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    logic.setInitialState(positions, 10000); // Limit is 10000
     
     // Try to lift when at upper limit
     positions[0] = 11000; // Ensure motor 3 is not the highest, so rack protection allows it
@@ -1429,7 +1334,7 @@ void test_motor_jog_respects_limits(void) {
 
 void test_motor_jog_overrides_limits_with_clear(void) {
     logic._forceStateForTesting(SystemState::STATE_MOTOR4);
-    logic.setInitialState(positions, 10000, nullptr); // Limit is 10000
+    logic.setInitialState(positions, 10000); // Limit is 10000
     
     // Try to lift when at upper limit, BUT hold CLEAR
     positions[0] = 0;
@@ -1458,7 +1363,7 @@ void test_motor_jog_prevents_worsening_rack(void) {
     // Test 1: Perfectly level roof (0,0,0,0)
     // Any movement worsens rack!
     positions[0] = 0; positions[1] = 0; positions[2] = 0; positions[3] = 0;
-    logic.setInitialState(positions, 10000, nullptr);
+    logic.setInitialState(positions, 10000);
     
     btn.up = true;
     logic.evaluate(btn, positions, throttles);

@@ -31,8 +31,7 @@ bool setup_storage() {
     if (magic != MAGIC_VALUE) {
     // First boot or uninitialized memory, set all to 0
     int32_t zeros[4] = {0, 0, 0, 0};
-    bool false_flags[4] = {false, false, false, false};
-    write_state_to_fram(zeros, 0, false_flags);
+    write_state_to_fram(zeros, 0);
     magic = MAGIC_VALUE;
     fram.write(FRAM_ADDR_MAGIC, reinterpret_cast<uint8_t *>(&magic), sizeof(magic));
   }
@@ -40,21 +39,14 @@ bool setup_storage() {
   return true;
 }
 
-void read_state_from_fram(int32_t currentPositions[4], int32_t *upperLimit, bool bottomedOutFlags[4]) {
+void read_state_from_fram(int32_t currentPositions[4], int32_t *upperLimit) {
   fram.read(FRAM_ADDR_POSITIONS, reinterpret_cast<uint8_t *>(currentPositions),
             sizeof(int32_t) * 4);
   fram.read(FRAM_ADDR_LIMIT, reinterpret_cast<uint8_t *>(upperLimit), sizeof(int32_t));
-  if (bottomedOutFlags != nullptr) {
-      fram.read(FRAM_ADDR_BOTTOMED, reinterpret_cast<uint8_t *>(bottomedOutFlags), sizeof(bool) * 4);
-  }
 }
 
-void write_state_to_fram(const int32_t currentPositions[4],
-                         int32_t upperLimit, const bool bottomedOutFlags[4]) {
+void write_state_to_fram(const int32_t currentPositions[4], int32_t upperLimit) {
   fram.write(FRAM_ADDR_POSITIONS, const_cast<uint8_t*>(reinterpret_cast<const uint8_t *>(currentPositions)),
              sizeof(int32_t) * 4);
   fram.write(FRAM_ADDR_LIMIT, const_cast<uint8_t*>(reinterpret_cast<const uint8_t *>(&upperLimit)), sizeof(int32_t));
-  if (bottomedOutFlags != nullptr) {
-      fram.write(FRAM_ADDR_BOTTOMED, const_cast<uint8_t*>(reinterpret_cast<const uint8_t *>(bottomedOutFlags)), sizeof(bool) * 4);
-  }
 }

@@ -18,16 +18,22 @@ enum class SystemState {
     STATE_LOWERING,
     STATE_FAULT,
     STATE_SET,
-    STATE_BOTTOMED,
     STATE_MOTOR1,
     STATE_MOTOR2,
     STATE_MOTOR3,
     STATE_MOTOR4
 };
 
+enum class MotorState {
+    OK,
+    STALLED_LIFTING,
+    STALLED_LOWERING
+};
+
 struct MotorData {
     int32_t currentPosition;
     int16_t currentThrottle;
+    MotorState state;
 };
 
 // Global shared state for UI/Display
