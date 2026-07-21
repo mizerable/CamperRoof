@@ -30,17 +30,14 @@ public:
     // Getters for current state
     SystemState getCurrentState() const;
     int32_t getUpperLimit() const;
-    void getBottomedOutFlags(bool flagsOut[4]) const;
 
     // Setters for initialization from FRAM
-    void setInitialState(int32_t currentPositions[4], int32_t upperLimit, const bool bottomedOutFlags[4] = nullptr);
+    void setInitialState(int32_t currentPositions[4], int32_t upperLimit);
 
 
     // State Graph helper methods
     bool hasDiverged(int32_t currentPositions[4]) const;
     bool canEnterWait(int32_t currentPositions[4]) const;
-    bool hasBottomedOut() const;
-    void updateStallDetection(const ButtonState& btn, int32_t currentPositions[4]);
 
     bool isMotorSelRising() const;
     SystemState getStateBeforeMotorSelect() const;
@@ -64,11 +61,6 @@ private:
     int32_t getMinPosition(const int32_t pos[4]) const;
     int32_t getMaxPosition(const int32_t pos[4]) const;
     void clearThrottles(int16_t throttles[4]) const;
-
-    // Bottom-Out Detection State
-    int32_t lastPositions[4];
-    int stallCounters[4];
-    bool is_bottomed_out[4];
 
     void apply_proportional_throttle(
         bool isLifting, 

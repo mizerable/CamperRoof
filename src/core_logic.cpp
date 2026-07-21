@@ -11,11 +11,6 @@ CoreLogic::CoreLogic() {
     stateBeforeMotorSelect = SystemState::STATE_WAIT;
     last_motor_sel_state = false;
     motor_sel_rising_flag = false;
-    for (int i=0; i<4; i++) {
-        lastPositions[i] = 0;
-        stallCounters[i] = 0;
-        is_bottomed_out[i] = false;
-    }
 }
 
 bool CoreLogic::isMotorSelRising() const {
@@ -57,17 +52,8 @@ void CoreLogic::clearThrottles(int16_t throttles[4]) const {
     }
 }
 
-void CoreLogic::setInitialState(int32_t positions[4], int32_t limit, const bool bottomedOutFlags[4]) {
+void CoreLogic::setInitialState(int32_t positions[4], int32_t limit) {
     upperLimit = limit;
-    for (int i=0; i<4; i++) {
-        lastPositions[i] = positions[i];
-        stallCounters[i] = 0;
-        if (bottomedOutFlags != nullptr) {
-            is_bottomed_out[i] = bottomedOutFlags[i];
-        } else {
-            is_bottomed_out[i] = false;
-        }
-    }
 }
 
 SystemState CoreLogic::getCurrentState() const {
@@ -76,10 +62,6 @@ SystemState CoreLogic::getCurrentState() const {
 
 int32_t CoreLogic::getUpperLimit() const {
     return upperLimit;
-}
-
-void CoreLogic::getBottomedOutFlags(bool flagsOut[4]) const {
-    for(int i=0; i<4; i++) flagsOut[i] = is_bottomed_out[i];
 }
 
 bool CoreLogic::hasDiverged(int32_t currentPositions[4]) const {
@@ -94,41 +76,6 @@ bool CoreLogic::canEnterWait(int32_t currentPositions[4]) const {
         return !hasDiverged(currentPositions); // Must not diverge to enter wait from active states
     }
     return true;
-}
-
-bool CoreLogic::hasBottomedOut() const {
-    // Only return true if ALL 4 motors are flagged as bottomed out
-    return is_bottomed_out[0] && is_bottomed_out[1] && is_bottomed_out[2] && is_bottomed_out[3];
-}
-
-void CoreLogic::updateStallDetection(const ButtonState& btn, int32_t currentPositions[4]) {
-    for (int i=0; i<4; i++) {
-        int32_t delta = abs(currentPositions[i] - lastPositions[i]);
-        
-        if (currentState == SystemState::STATE_LOWERING) {
-            // Ignore intentional stops at soft limit
-            if (currentPositions[i] <= 0 && !btn.clr) {
-                stallCounters[i] = 0;
-            } else if (delta < 20) { // MIN_EXPECTED_DELTA (50 is normal speed, <20 is bogged down)
-                stallCounters[i]++;
-                if (stallCounters[i] >= 15) { // 0.3 seconds
-                    is_bottomed_out[i] = true;
-                }
-            } else {
-                stallCounters[i] = 0;
-            }
-        } 
-        else if (currentState == SystemState::STATE_LIFTING) {
-            // Moving UP inherently clears the bottomed out flag
-            is_bottomed_out[i] = false;
-            stallCounters[i] = 0;
-        } else {
-            // In WAIT, SET, or FAULT, reset the stall counters so they don't carry over
-            stallCounters[i] = 0;
-        }
-        
-        lastPositions[i] = currentPositions[i];
-    }
 }
 
 void CoreLogic::apply_proportional_throttle(
@@ -161,7 +108,7 @@ void CoreLogic::apply_proportional_throttle(
             throttle = -throttle;
         }
 
-        // Individual Limits and Bottom-Out Override
+        // Individual Limits Override
         if (!overrideLimits) {
             if (isLifting && currentPositions[i] >= upperLimit) {
                 throttle = 0;
@@ -171,11 +118,6 @@ void CoreLogic::apply_proportional_throttle(
             }
         }
         
-        // Safety Bottom-Out Protection ALWAYS overrides throttle (even if overrideLimits is true)
-        if (!isLifting && is_bottomed_out[i]) {
-            throttle = 0;
-        }
-
         throttles[i] = throttle;
     }
 }
@@ -185,9 +127,6 @@ void CoreLogic::evaluate(
     int32_t currentPositions[4],
     int16_t throttles[4]
 ) {
-    // 0. Real-time per-motor stall detection
-    updateStallDetection(btn, currentPositions);
-
     // 1. Evaluate Motor Sel Edge (for custom conditions)
     evaluateMotorSelEdge(btn);
 
@@ -217,7 +156,6 @@ void CoreLogic::evaluate(
     // 3. Execute ongoing actions based on the current state
     switch (currentState) {
         case SystemState::STATE_WAIT:
-        case SystemState::STATE_BOTTOMED:
             clearThrottles(throttles);
             break;
         case SystemState::STATE_LIFTING:

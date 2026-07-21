@@ -40,7 +40,6 @@ const char* state_to_string(SystemState state) {
         case SystemState::STATE_LOWERING: return "LOWERING";
         case SystemState::STATE_FAULT: return "FAULT";
         case SystemState::STATE_SET: return "SET";
-        case SystemState::STATE_BOTTOMED: return "BOTTOMED";
         case SystemState::STATE_MOTOR1: return "JOG_M1";
         case SystemState::STATE_MOTOR2: return "JOG_M2";
         case SystemState::STATE_MOTOR3: return "JOG_M3";
@@ -75,9 +74,13 @@ void update_display(const SharedState* state) {
         display.print(i + 1);
         display.print(F(": "));
         display.print(state->motors[i].currentPosition);
-        display.print(F(" ("));
-        display.print(state->motors[i].currentThrottle);
-        display.println(F("%)"));
+        if (state->motors[i].state != MotorState::OK) {
+            display.println(F(" (STALLED)"));
+        } else {
+            display.print(F(" ("));
+            display.print(state->motors[i].currentThrottle);
+            display.println(F("%)"));
+        }
     }
     
     if (state->state == SystemState::STATE_FAULT) {

@@ -13,7 +13,6 @@ void StateGraph::buildGraph() {
     loweringNode.stateId = SystemState::STATE_LOWERING;
     setNode.stateId = SystemState::STATE_SET;
     faultNode.stateId = SystemState::STATE_FAULT;
-    bottomedNode.stateId = SystemState::STATE_BOTTOMED;
     motor1Node.stateId = SystemState::STATE_MOTOR1;
     motor2Node.stateId = SystemState::STATE_MOTOR2;
     motor3Node.stateId = SystemState::STATE_MOTOR3;
@@ -64,12 +63,6 @@ void StateGraph::buildGraph() {
         nullptr
     });
     loweringNode.transitions.push_back({
-        { R, P, R, ANY, ANY }, 
-        [](CoreLogic* ctx, const ButtonState& btn, int32_t pos[4]) { return ctx->hasBottomedOut(); }, 
-        &bottomedNode, 
-        nullptr
-    });
-    loweringNode.transitions.push_back({
         { R, R, R, ANY, ANY }, 
         [](CoreLogic* ctx, const ButtonState& btn, int32_t pos[4]) { return ctx->canEnterWait(pos); }, 
         &waitNode, 
@@ -96,14 +89,6 @@ void StateGraph::buildGraph() {
         [](CoreLogic* ctx, const ButtonState& btn, int32_t pos[4]) { return ctx->isMotorSelRising(); },
         &motor1Node, 
         [](CoreLogic* ctx) { ctx->saveStateBeforeMotorSelect(SystemState::STATE_FAULT); }
-    });
-
-    // BOTTOMED transitions
-    bottomedNode.transitions.push_back({
-        { R, R, R, ANY, ANY }, 
-        [](CoreLogic* ctx, const ButtonState& btn, int32_t pos[4]) { return ctx->canEnterWait(pos); }, 
-        &waitNode, 
-        nullptr
     });
 
     // MOTOR JOG transitions
@@ -142,5 +127,5 @@ void StateGraph::buildGraph() {
         nullptr
     });
 
-    allNodes = { &waitNode, &liftingNode, &loweringNode, &setNode, &faultNode, &bottomedNode, &motor1Node, &motor2Node, &motor3Node, &motor4Node };
+    allNodes = { &waitNode, &liftingNode, &loweringNode, &setNode, &faultNode, &motor1Node, &motor2Node, &motor3Node, &motor4Node };
 }

@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include "ble_controller.h"
+#include "StallProtectingMotorSystem.h"
 
 #include "pins.h"
 
@@ -19,7 +20,7 @@ static SemaphoreHandle_t i2cMutex;
 static int32_t currentPositions[4] = {0, 0, 0, 0};
 static int32_t upperLimit = 0;
 static CoreLogic coreLogic;
-static IMotorSystem *g_motorSystem = nullptr;
+static StallProtectingMotorSystem *g_motorSystem = nullptr;
 
 // --- HELPER FUNCTIONS ---
 static ButtonState get_debounced_buttons() {
@@ -77,6 +78,8 @@ static void MotorTask(void *pvParameters) {
         currentPositions[i] += deltas[i];
     }
 
+    g_motorSystem->updateClearButton(btn.clr);
+
     // 2. Evaluate Core Logic
     int16_t throttles[4];
 
@@ -86,10 +89,8 @@ static void MotorTask(void *pvParameters) {
     g_motorSystem->setThrottles(throttles);
 
     // 4. Persistence & UI Sync
-    bool bottomedFlags[4];
-    coreLogic.getBottomedOutFlags(bottomedFlags);
     if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
-        write_state_to_fram(currentPositions, coreLogic.getUpperLimit(), bottomedFlags);
+        write_state_to_fram(currentPositions, coreLogic.getUpperLimit());
         xSemaphoreGive(i2cMutex);
     }
 
@@ -100,6 +101,7 @@ static void MotorTask(void *pvParameters) {
       for (int i = 0; i < 4; i++) {
         systemState.motors[i].currentPosition = currentPositions[i];
         systemState.motors[i].currentThrottle = throttles[i];
+        systemState.motors[i].state = g_motorSystem->getMotorState(i);
       }
       xSemaphoreGive(stateMutex);
     }
@@ -130,7 +132,7 @@ static void DisplayTask(void *pvParameters) {
 }
 
 void AppRunner::start(IMotorSystem *motorSystem) {
-  g_motorSystem = motorSystem;
+  g_motorSystem = new StallProtectingMotorSystem(motorSystem);
 
   Serial.begin(115200);
 
@@ -155,11 +157,10 @@ void AppRunner::start(IMotorSystem *motorSystem) {
   setup_display();
 
   // Load state from physical I2C FRAM
-  bool bottomedFlags[4];
-  read_state_from_fram(currentPositions, &upperLimit, bottomedFlags);
+  read_state_from_fram(currentPositions, &upperLimit);
 
   // Initialize Shared State
-  coreLogic.setInitialState(currentPositions, upperLimit, bottomedFlags);
+  coreLogic.setInitialState(currentPositions, upperLimit);
   systemState.state = coreLogic.getCurrentState();
   systemState.upperLimit = coreLogic.getUpperLimit();
   for (int i = 0; i < 4; i++) {
