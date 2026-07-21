@@ -1,4 +1,4 @@
-﻿#include <Arduino.h>
+#include <Arduino.h>
 #include <unity.h>
 #include <Wire.h>
 #include "storage.h"
@@ -951,7 +951,7 @@ void test_graph_no_ambiguities(void) {
 
 void setup() {
     Serial.begin(115200);
-    delay(2000); // Give time for Serial monitor to attach
+    delay(5000); // Give time for Serial monitor to attach
     
     setup_pcnt(); // Initialize hardware PCNT so mock tests don't crash when setCount is called
     

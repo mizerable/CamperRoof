@@ -257,7 +257,8 @@ void test_opposite_direction_clears_stall(void) {
 }
 
 void setup() {
-    delay(2000);
+    Serial.begin(115200);
+    delay(5000);
     UNITY_BEGIN();
     RUN_TEST(test_initial_state_is_ok);
     RUN_TEST(test_no_stall_on_steady_movement);

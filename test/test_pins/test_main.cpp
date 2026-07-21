@@ -49,7 +49,7 @@ void test_no_pin_collisions(void) {
 
 #ifndef PIO_UNIT_TESTING_MOCK
 void setup() {
-    delay(2000);
+    delay(5000);
     UNITY_BEGIN();
     RUN_TEST(test_no_pin_collisions);
     UNITY_END();
